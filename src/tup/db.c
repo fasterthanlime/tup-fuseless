@@ -5621,6 +5621,7 @@ static int compare_list_tree(struct tup_entry_head *a, struct tupid_entries *b,
 	LIST_FOREACH(tent, a, list) {
 		ttb = tupid_tree_search(b, tent->tnode.tupid);
 		if(!ttb) {
+			fprintf(stderr, "extra a!\n");
 			if(extra_a && extra_a(tent->tnode.tupid, data) < 0)
 				return -1;
 		} else {
@@ -5630,6 +5631,7 @@ static int compare_list_tree(struct tup_entry_head *a, struct tupid_entries *b,
 	}
 
 	RB_FOREACH(ttb, tupid_entries, b) {
+		fprintf(stderr, "extra b!\n");
 		if(extra_b && extra_b(ttb->tupid, data) < 0)
 			return -1;
 	}
@@ -5740,6 +5742,8 @@ static int missing_output(tupid_t tupid, void *data)
 
 	if(tup_entry_add(aod->cmdid, &cmdtent) < 0)
 		return -1;
+
+	fprintf(stderr, "missing_output: cmdtent->dt = %d, tent->tnode.tupid = %d\n", cmdtent->dt, tent->tnode.tupid);
 	fprintf(aod->f, "tup error: Expected to write to file '");
 	get_relative_dir(aod->f, NULL, cmdtent->dt, tent->tnode.tupid);
 	fprintf(aod->f, "' from cmd %lli but didn't\n", aod->cmdid);
@@ -5765,6 +5769,8 @@ int tup_db_check_actual_outputs(FILE *f, tupid_t cmdid,
 		.output_error = 0,
 		.mapping_list = mapping_list,
 	};
+
+	fprintf(stderr, "checking actual outputs for cmdid %d\n", cmdid);
 
 	if(tup_db_get_outputs(cmdid, &output_root, NULL) < 0)
 		return -1;

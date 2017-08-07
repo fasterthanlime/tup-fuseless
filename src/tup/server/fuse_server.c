@@ -455,8 +455,6 @@ static int exec_internal(struct server *s, const char *cmd, struct tup_env *newe
 	struct execmsg em;
 	struct variant *variant;
 
-	fprintf(stderr, "exec_internal %s\n", cmd);
-
 	memset(&em, 0, sizeof(em));
 	em.sid = s->id;
 	em.single_output = single_output;
@@ -471,15 +469,12 @@ static int exec_internal(struct server *s, const char *cmd, struct tup_env *newe
 	 */
 	// strncpy(dir, get_tup_top() + 1, sizeof(dir));
 	strncpy(dir, get_tup_top(), sizeof(dir));
-	fprintf(stderr, "exec_internal, dir = %s\n", dir);
 
 	// em.dirlen = get_tup_top_len() - 1;
 	em.dirlen = get_tup_top_len();
 	em.dirlen += snprint_tup_entry(dir + em.dirlen,
 				       sizeof(dir) - em.dirlen - 1,
 				       dtent) + 1;
-	fprintf(stderr, "exec_internal, dir after snprint = %s\n", dir);
-	fprintf(stderr, "exec_internal, job = %s\n", job);
 	if(em.joblen >= JOB_MAX || em.dirlen >= PATH_MAX) {
 		server_lock(s);
 		fprintf(stderr, "tup error: Directory for tup entry %lli is too long.\n", dtent->tnode.tupid);

@@ -2928,13 +2928,13 @@ static int validate_output(struct tupfile *tf, tupid_t dt, const char *name,
 				}
 			}
 		} else {
-			fprintf(tf->f, "tup error: Attempting to insert '");
-			if(dt != tf->tupid) {
-				get_relative_dir(tf->f, NULL, tf->tupid, dt);
-				fprintf(tf->f, "/");
-			}
-			fprintf(tf->f, "%s' as a generated node when it already exists as a different type (%s). You can do one of two things to fix this:\n  1) If this file is really supposed to be created from the command, delete the file from the filesystem and try again.\n  2) Change your rule in the Tupfile so you aren't trying to overwrite the file.\n", name, tup_db_type(tent->type));
-			return -1;
+			// fprintf(tf->f, "tup error: Attempting to insert '");
+			// if(dt != tf->tupid) {
+			// 	get_relative_dir(tf->f, NULL, tf->tupid, dt);
+			// 	fprintf(tf->f, "/");
+			// }
+			// fprintf(tf->f, "%s' as a generated node when it already exists as a different type (%s). You can do one of two things to fix this:\n  1) If this file is really supposed to be created from the command, delete the file from the filesystem and try again.\n  2) Change your rule in the Tupfile so you aren't trying to overwrite the file.\n", name, tup_db_type(tent->type));
+			// return -1;
 		}
 	}
 	return 0;

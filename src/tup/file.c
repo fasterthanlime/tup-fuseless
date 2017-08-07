@@ -558,7 +558,65 @@ static int update_write_info(FILE *f, tupid_t cmdid, struct file_info *info,
 	struct tup_entry *tent;
 	int write_bork = 0;
 
+	fprintf(stderr, "in update_write_info, list empty? %d\n", LIST_EMPTY(&info->write_list));
+
+	fprintf(stderr, "grabbing outputs for cmd %d\n", cmdid);
+	struct tupid_entries output_root = {NULL};
+	if(tup_db_get_outputs(cmdid, &output_root, NULL) < 0) {
+		fprintf(stderr, "could not get outputs :(\n");
+	} else {
+		fprintf(stderr, "had outputs!\n");
+		struct tupid_tree *ttb;
+
+		RB_FOREACH(ttb, tupid_entries, &output_root) {
+			fprintf(stderr, "has output with id %d\n", ttb->tupid);
+
+			struct tup_entry *cmdtent;
+			if(tup_entry_add(cmdid, &cmdtent) < 0) {
+				fprintf(stderr, "Could not add cmdid to cmdtent");
+				return -1;
+			}
+
+			struct estring e;
+			estring_init(&e);
+
+			struct tup_entry *cte = cmdtent;
+			while (cte && cte->parent && cte->parent->dt != 0) { 
+				cte = cte->parent;
+			}
+
+			if(get_relative_dir(NULL, &e, cte->dt, ttb->tupid) < 0) {
+				fprintf(stderr, "Unable to get relative path of output file.");
+				return -1;
+			}
+
+			fprintf(stderr, "faking it! (TODO)\n");
+			fprintf(stderr, "relative path = %s\n", e.s);
+
+			int full_path_len = get_tup_top_len() + e.len + 1; // sic.
+
+			char *full_path = malloc(full_path_len + 1);
+			sprintf(full_path, "%s/%s", get_tup_top(), e.s);
+			full_path[full_path_len] = '\0';
+
+			fprintf(stderr, "absolute path = %s\n", full_path);
+
+			struct file_entry *fent = new_entry(full_path);
+			if (!fent) {
+				fprintf(stderr, "could not create file entry\n");
+			}
+
+			LIST_INSERT_HEAD(&info->write_list, fent, list);
+			fprintf(stderr, "inserted into write_list\n");
+
+			free(full_path);
+			free(e.s);
+		}
+	}
+
 	while(!LIST_EMPTY(&info->write_list)) {
+		fprintf(stderr, "woo iterating write_list\n");
+
 		tupid_t newdt;
 		struct path_element *pel = NULL;
 
@@ -567,6 +625,7 @@ static int update_write_info(FILE *f, tupid_t cmdid, struct file_info *info,
 		/* Remove duplicate write entries */
 		LIST_FOREACH_SAFE(r, &info->write_list, list, tmp) {
 			if(r != w && pg_eq(&w->pg, &r->pg)) {
+				fprintf(stderr, "deleting duplicate entry\n");
 				del_file_entry(r);
 			}
 		}
@@ -624,13 +683,17 @@ out_skip:
 		del_file_entry(w);
 	}
 
-	// if(tup_db_check_actual_outputs(f, cmdid, entryhead, &info->mapping_list, &write_bork) < 0)
-	// 	return -1;
+	if(tup_db_check_actual_outputs(f, cmdid, entryhead, &info->mapping_list, &write_bork) < 0)
+		return -1;
+
+	fprintf(f, "mapping list empty? %d\n", LIST_EMPTY(&info->mapping_list));
 
 	while(!LIST_EMPTY(&info->mapping_list)) {
 		struct mapping *map;
 
 		map = LIST_FIRST(&info->mapping_list);
+
+		fprintf(f, "tmpname = %s, realname = %s\n", map->tmpname, map->realname);
 
 		/* TODO: strcmp only here for win32 support */
 		if(strcmp(map->tmpname, map->realname) != 0) {
@@ -689,6 +752,7 @@ static int update_read_info(FILE *f, tupid_t cmdid, struct file_info *info,
 		tup_entry_list_add(tent, entryhead);
 	}
 
+	// FIXME: we should still do this
 	// if(tup_db_check_actual_inputs(f, cmdid, entryhead, sticky_root, normal_root, group_sticky_root, important_link_removed) < 0)
 	// 	return -1;
 	return 0;
