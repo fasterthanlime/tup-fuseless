@@ -46,6 +46,8 @@
 #endif
 #include <sys/wait.h>
 
+#define perror(...) { fprintf(stderr, "perror at %s:%d in %s\n", __FILE__, __LINE__, __FUNCTION__); perror(__VA_ARGS__); }
+
 #define TUP_MNT ".tup/mnt"
 
 static void sighandler(int sig);
@@ -100,12 +102,14 @@ static void *fuse_thread(void *arg)
 #if defined(__linux__)
 static int os_unmount(void)
 {
-	int rc;
-	rc = system("fusermount -u -z " TUP_MNT);
-	if(rc == -1) {
-		perror("system");
-	}
-	return rc;
+	return 0;
+
+	// int rc;
+	// rc = system("fusermount -u -z " TUP_MNT);
+	// if(rc == -1) {
+	// 	perror("system");
+	// }
+	// return rc;
 }
 #elif defined(__APPLE__)
 static int os_unmount(void)
@@ -278,12 +282,12 @@ int server_init(enum server_mode mode)
 		return -1;
 	}
 
-	if(pthread_create(&fuse_tid, NULL, fuse_thread, NULL) != 0) {
-		perror("pthread_create");
-		goto err_out;
-	}
-	if(tup_fs_inited() < 0)
-		goto err_out;
+	// if(pthread_create(&fuse_tid, NULL, fuse_thread, NULL) != 0) {
+	// 	perror("pthread_create");
+	// 	goto err_out;
+	// }
+	// if(tup_fs_inited() < 0)
+	// 	goto err_out;
 
 #if defined(__FreeBSD__) || defined(__APPLE__)
 	/* OSX and FreeBSD have a race condition between mounting the fuse fs
@@ -355,26 +359,29 @@ static int re_openat(int fd, const char *path)
 
 static int virt_tup_open(struct parser_server *ps)
 {
-	char virtdir[100];
-	int fd;
+	// char virtdir[100];
+	// int fd;
 
-	fd = openat(tup_top_fd(), TUP_MNT, O_RDONLY);
-	if(fd < 0) {
-		perror(TUP_MNT);
-		return -1;
-	}
+	// fd = openat(tup_top_fd(), TUP_MNT, O_RDONLY);
+	// if(fd < 0) {
+	// 	perror(TUP_MNT);
+	// 	return -1;
+	// }
 
-	snprintf(virtdir, sizeof(virtdir), TUP_JOB "%i", ps->s.id);
-	virtdir[sizeof(virtdir)-1] = 0;
-	fd = re_openat(fd, virtdir);
-	if(fd < 0) {
-		fprintf(stderr, "tup error: Unable to chdir to virtual job directory.\n");
-		return -1;
-	}
+	// snprintf(virtdir, sizeof(virtdir), TUP_JOB "%i", ps->s.id);
+	// virtdir[sizeof(virtdir)-1] = 0;
+	// fd = re_openat(fd, virtdir);
+	// if(fd < 0) {
+	// 	fprintf(stderr, "tup error: Unable to chdir to virtual job directory, fd = %d\n", fd);
+	// 	return -1;
+	// }
 
 	/* +1: Skip past top-level '/' to do a relative chdir into our fake fs. */
-	ps->root_fd = re_openat(fd, get_tup_top() + 1);
+	// fprintf(stderr, "tup_top + 1 = %s\n", get_tup_top() + 1);
+	// ps->root_fd = re_openat(fd, get_tup_top() + 1);
+	ps->root_fd = open(get_tup_top(), O_RDONLY);
 	if(ps->root_fd < 0) {
+		perror("ps->root_fd")
 		return -1;
 	}
 
@@ -448,6 +455,8 @@ static int exec_internal(struct server *s, const char *cmd, struct tup_env *newe
 	struct execmsg em;
 	struct variant *variant;
 
+	fprintf(stderr, "exec_internal %s\n", cmd);
+
 	memset(&em, 0, sizeof(em));
 	em.sid = s->id;
 	em.single_output = single_output;
@@ -460,11 +469,17 @@ static int exec_internal(struct server *s, const char *cmd, struct tup_env *newe
 	/* dirlen includes the \0, which snprintf does not count. Hence the -1/+1
 	 * adjusting.
 	 */
-	strncpy(dir, get_tup_top() + 1, sizeof(dir));
-	em.dirlen = get_tup_top_len() - 1;
+	// strncpy(dir, get_tup_top() + 1, sizeof(dir));
+	strncpy(dir, get_tup_top(), sizeof(dir));
+	fprintf(stderr, "exec_internal, dir = %s\n", dir);
+
+	// em.dirlen = get_tup_top_len() - 1;
+	em.dirlen = get_tup_top_len();
 	em.dirlen += snprint_tup_entry(dir + em.dirlen,
 				       sizeof(dir) - em.dirlen - 1,
 				       dtent) + 1;
+	fprintf(stderr, "exec_internal, dir after snprint = %s\n", dir);
+	fprintf(stderr, "exec_internal, job = %s\n", job);
 	if(em.joblen >= JOB_MAX || em.dirlen >= PATH_MAX) {
 		server_lock(s);
 		fprintf(stderr, "tup error: Directory for tup entry %lli is too long.\n", dtent->tnode.tupid);

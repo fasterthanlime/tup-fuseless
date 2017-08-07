@@ -624,8 +624,8 @@ out_skip:
 		del_file_entry(w);
 	}
 
-	if(tup_db_check_actual_outputs(f, cmdid, entryhead, &info->mapping_list, &write_bork) < 0)
-		return -1;
+	// if(tup_db_check_actual_outputs(f, cmdid, entryhead, &info->mapping_list, &write_bork) < 0)
+	// 	return -1;
 
 	while(!LIST_EMPTY(&info->mapping_list)) {
 		struct mapping *map;
@@ -689,7 +689,7 @@ static int update_read_info(FILE *f, tupid_t cmdid, struct file_info *info,
 		tup_entry_list_add(tent, entryhead);
 	}
 
-	if(tup_db_check_actual_inputs(f, cmdid, entryhead, sticky_root, normal_root, group_sticky_root, important_link_removed) < 0)
-		return -1;
+	// if(tup_db_check_actual_inputs(f, cmdid, entryhead, sticky_root, normal_root, group_sticky_root, important_link_removed) < 0)
+	// 	return -1;
 	return 0;
 }

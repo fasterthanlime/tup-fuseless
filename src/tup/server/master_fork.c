@@ -331,6 +331,8 @@ static int setup_subprocess(int sid, const char *job, const char *dir,
 	char buf[64];
 	int do_chroot;
 
+	fprintf(stderr, "setup_subprocess: preparing stdout\n");
+
 	snprintf(buf, sizeof(buf), ".tup/tmp/output-%i", sid);
 	buf[sizeof(buf)-1] = 0;
 	ofd = creat(buf, 0600);
@@ -344,6 +346,8 @@ static int setup_subprocess(int sid, const char *job, const char *dir,
 		fprintf(stderr, "tup error: Unable to create temporary file for sub-process output.\n");
 		return -1;
 	}
+
+	fprintf(stderr, "setup_subprocess: preparing stderr\n");
 
 	if(single_output) {
 		efd = ofd;
@@ -382,8 +386,10 @@ static int setup_subprocess(int sid, const char *job, const char *dir,
 			return -1;
 		}
 	}
+	fprintf(stderr, "setup_subprocess: stdout & stderr are ready\n");
 #ifdef __linux__
 	if(use_namespacing) {
+		fprintf(stderr, "setup_subprocess: using namespace\n");
 		if(unshare(CLONE_NEWNS) < 0) {
 			perror("unshare(CLONE_NEWNS)");
 			return -1;
@@ -411,6 +417,7 @@ static int setup_subprocess(int sid, const char *job, const char *dir,
 	} else if(need_namespacing && privileged && !use_namespacing) {
 		do_chroot = 1;
 	}
+	fprintf(stderr, "setup_subprocess: do_chroot %d\n", do_chroot);
 
 	if(do_chroot) {
 #ifdef __APPLE__
@@ -449,6 +456,7 @@ static int setup_subprocess(int sid, const char *job, const char *dir,
 		}
 	} else {
 		if(use_namespacing) {
+			fprintf(stderr, "setup_subprocess: using namespacing\n");
 #ifdef __linux__
 			char srcmount[PATH_MAX];
 			if(snprintf(srcmount, sizeof(srcmount), "%s%s", job, get_tup_top()) >= (signed)sizeof(srcmount)) {
@@ -470,15 +478,19 @@ static int setup_subprocess(int sid, const char *job, const char *dir,
 			}
 #endif
 		} else {
-			if(chdir(job) < 0) {
-				perror("chdir");
-				fprintf(stderr, "tup error: Unable to chdir to '%s'\n", job);
-
-			}
+			fprintf(stderr, "setup_subprocess: no chroot, no namespacing, changing dir to job\n");
+			fprintf(stderr, "or maybe let's not\n");
+			// if(chdir(job) < 0) {
+			// 	perror("chdir");
+			// 	fprintf(stderr, "tup error: Unable to chdir to '%s'\n", job);
+			// }
 		}
 	}
+	fprintf(stderr, "setup_subprocess: dropping privs\n");
 	if(tup_drop_privs() < 0)
 		return -1;
+
+	fprintf(stderr, "setup_subprocess: changing dir to %s\n", dir);
 	if(chdir(dir) < 0) {
 		perror("chdir");
 		fprintf(stderr, "tup error: Unable to chdir to '%s'\n", dir);
@@ -619,6 +631,10 @@ static int master_fork_loop(void)
 			waiter->umount_dev = 1;
 		}
 #endif
+
+		fprintf(stderr, "in master_fork, cmd = %s\n", cmd);
+		fprintf(stderr, "in master_fork, dir = %s\n", dir);
+		fprintf(stderr, "in master_fork, job = %s\n", job);
 
 		pid = fork();
 		if(pid < 0) {
