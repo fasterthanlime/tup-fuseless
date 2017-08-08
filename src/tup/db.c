@@ -946,6 +946,8 @@ struct tup_entry *tup_db_create_node_part_display(tupid_t dt, const char *name, 
 {
 	struct tup_entry *tent;
 
+	fprintf(stderr, "creating node, display = %s, name = %s\n", display, name);
+
 	if(node_select(dt, name, namelen, &tent) < 0) {
 		return NULL;
 	}
@@ -5619,6 +5621,7 @@ static int compare_list_tree(struct tup_entry_head *a, struct tupid_entries *b,
 	struct tupid_tree *ttb;
 
 	LIST_FOREACH(tent, a, list) {
+		fprintf(stderr, "iterating over a...\n");
 		ttb = tupid_tree_search(b, tent->tnode.tupid);
 		if(!ttb) {
 			fprintf(stderr, "extra a!\n");
@@ -5631,7 +5634,9 @@ static int compare_list_tree(struct tup_entry_head *a, struct tupid_entries *b,
 	}
 
 	RB_FOREACH(ttb, tupid_entries, b) {
-		fprintf(stderr, "extra b!\n");
+		fprintf(stderr, "iterating over b...\n");
+		fprintf(stderr, "extra b: %d\n", ttb->tupid);
+
 		if(extra_b && extra_b(ttb->tupid, data) < 0)
 			return -1;
 	}
@@ -5769,8 +5774,6 @@ int tup_db_check_actual_outputs(FILE *f, tupid_t cmdid,
 		.output_error = 0,
 		.mapping_list = mapping_list,
 	};
-
-	fprintf(stderr, "checking actual outputs for cmdid %d\n", cmdid);
 
 	if(tup_db_get_outputs(cmdid, &output_root, NULL) < 0)
 		return -1;
@@ -6137,9 +6140,11 @@ int tup_db_check_actual_inputs(FILE *f, tupid_t cmdid,
 	/* First check if we are missing any links that should be sticky. We
 	 * don't care about any links that are marked sticky but aren't used.
 	 */
+	fprintf(stderr, "check_actual_inputs calling compare_list_tree\n");
 	if(compare_list_tree(readhead, &sticky_copy, &aid,
 			     new_input, NULL) < 0)
 		return -1;
+	fprintf(stderr, "check_actual_inputs done calling compare_list_tree\n");
 
 	rc = check_generated_inputs(f, &aid.missing_input_root, aid.sticky_root, group_sticky_root);
 

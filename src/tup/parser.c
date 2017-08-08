@@ -3559,6 +3559,7 @@ static char *tup_printf(struct tupfile *tf, const char *cmd, int cmd_len,
 				return NULL;
 			}
 			TAILQ_FOREACH(nle, &nl->entries, list) {
+				fprintf(stderr, "nle path = %s\n", nle->path);
 				if(!first) {
 					estring_append(&e, " ", 1);
 				}
