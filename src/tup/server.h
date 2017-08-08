@@ -40,6 +40,23 @@ struct server {
 	int output_fd;
 	int error_fd;
 	pthread_mutex_t *error_mutex;
+
+	//////////////////////////
+	// socket stuff
+	//////////////////////////
+
+	// socket pair
+	int sd[2];
+
+	// mutex when sending/receiving access events
+	int lockfd;
+
+	// temp variables to read access events
+	char file1[PATH_MAX];
+	char file2[PATH_MAX];
+
+	// message_thread pthread ID
+	pthread_t tid;
 };
 
 struct parser_directory {

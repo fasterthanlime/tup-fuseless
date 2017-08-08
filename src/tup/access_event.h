@@ -23,8 +23,16 @@
 
 #include "compat.h"
 
+/** The environment variable used to pass the name of the UNIX socket server
+ * to subprocesses.
+ */
+#define TUP_SERVER_NAME "tup_master"
+
 /** The file descriptor for the variable dictionary. */
 #define TUP_VARDICT_NAME "tup_vardict"
+
+/** Lock to ensure synchronization with the ldpreload socket. */
+#define TUP_LOCK_NAME "tup_lock"
 
 /* The virtual directory used to pass @-variable dependencies from a client
  * program to the server.
@@ -38,6 +46,8 @@ enum access_type {
 	ACCESS_RENAME,
 	ACCESS_UNLINK,
 	ACCESS_VAR,
+
+	ACCESS_STOP_SERVER,
 };
 
 /** Structure sent across the unix socket to notify the main wrapper of any

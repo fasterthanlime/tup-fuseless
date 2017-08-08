@@ -11,6 +11,7 @@ all:
 	$(MAKE) -C src/lua
 	$(MAKE) -C src/sqlite3
 	ar crs libtup_client.a src/tup/vardict.o src/tup/send_event.o src/tup/flock/fcntl.o
+	$(MAKE) -C src/ldpreload
 	cp src/tup/vardict.h tup_client.h
 	gcc \
 		src/tup/*.o \

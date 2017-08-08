@@ -44,6 +44,7 @@
 #ifdef __linux__
 #include <sys/sysmacros.h>
 #endif
+#include <sys/socket.h>
 #include <sys/wait.h>
 
 #define perror(...) { fprintf(stderr, "perror at %s:%d in %s\n", __FILE__, __LINE__, __FUNCTION__); perror(__VA_ARGS__); }
@@ -51,6 +52,8 @@
 #define TUP_MNT ".tup/mnt"
 
 static void sighandler(int sig);
+static void *message_thread(void *arg);
+static int recvall(int sd, void *buf, size_t len);
 
 static struct sigaction sigact = {
 	.sa_handler = sighandler,
@@ -444,7 +447,7 @@ static int finfo_wait_open_count(struct server *s)
 	return 0;
 }
 
-static int exec_internal(struct server *s, const char *cmd, struct tup_env *newenv,
+static int exec_internal(struct server *s, const char *cmd, struct tup_env *newenv_in,
 			 struct tup_entry *dtent, int single_output, int need_namespacing,
 			 int run_in_bash)
 {
@@ -454,6 +457,69 @@ static int exec_internal(struct server *s, const char *cmd, struct tup_env *newe
 	char dir[PATH_MAX];
 	struct execmsg em;
 	struct variant *variant;
+
+	if(socketpair(AF_UNIX, SOCK_STREAM, 0, s->sd) < 0) {
+		perror("socketpair");
+		return -1;
+	}
+
+	if(pthread_create(&s->tid, NULL, message_thread, s) < 0) {
+		perror("pthread_create");
+		close(s->sd[0]);
+		close(s->sd[1]);
+		return -1;
+	}
+
+	struct tup_env *newenv = malloc(sizeof(struct tup_env));
+	if (!newenv) {
+		perror("malloc(newenv)");
+		return -1;
+	}
+
+	newenv->num_entries = newenv_in->num_entries;
+	newenv->block_size = newenv_in->block_size;
+
+	int servname_len = snprintf(NULL, 0, "%s=%i", TUP_SERVER_NAME, s->sd[1]);
+	newenv->num_entries++;
+	newenv->block_size += servname_len + 1;
+
+	int lockname_len = snprintf(NULL, 0, "%s=%i", TUP_LOCK_NAME, s->lockfd);
+	newenv->num_entries++;
+	newenv->block_size += lockname_len + 1;
+
+	newenv->envblock = malloc(newenv->block_size);
+	if (!newenv->envblock) {
+		perror("malloc(newenv->envblock)");
+		return -1;
+	}
+
+	fprintf(stderr, "TUP_SERVER_NAME = %s\n", TUP_SERVER_NAME);
+	fprintf(stderr, "TUP_LOCK_NAME = %s\n", TUP_LOCK_NAME);
+	fprintf(stderr, "=========================================\n");
+	fprintf(stderr, "newenv_in->envblock = %s\n", newenv_in->envblock);
+	fprintf(stderr, "=========================================\n");
+	fprintf(stderr, "strlen(newenv_in->envblock) = %d\n", strlen(newenv_in->envblock));
+	fprintf(stderr, "newenv_in->block_size = %d\n", newenv_in->block_size);
+
+	memcpy(newenv->envblock, newenv_in->envblock, newenv_in->block_size);
+	// before the second '\0'
+	char *cur = newenv->envblock + newenv_in->block_size - 1;
+	cur += snprintf(cur, servname_len+1, "%s=%i", TUP_SERVER_NAME, s->sd[1]) + 1;
+	cur += snprintf(cur, lockname_len+1, "%s=%i", TUP_LOCK_NAME, s->lockfd) + 1;
+	*cur = '\0';
+
+	{
+		fprintf(stderr, "full newenv: ");
+		int i;
+		for (i = 0; i < newenv->block_size; i++) {
+			if (newenv->envblock[i] == '\0') {
+				fprintf(stderr, "((NULL))");
+			} else {
+				fprintf(stderr, "%c", newenv->envblock[i]);
+			}
+		}
+		fprintf(stderr, "\n");
+	}
 
 	memset(&em, 0, sizeof(em));
 	em.sid = s->id;
@@ -467,10 +533,8 @@ static int exec_internal(struct server *s, const char *cmd, struct tup_env *newe
 	/* dirlen includes the \0, which snprintf does not count. Hence the -1/+1
 	 * adjusting.
 	 */
-	// strncpy(dir, get_tup_top() + 1, sizeof(dir));
 	strncpy(dir, get_tup_top(), sizeof(dir));
 
-	// em.dirlen = get_tup_top_len() - 1;
 	em.dirlen = get_tup_top_len();
 	em.dirlen += snprint_tup_entry(dir + em.dirlen,
 				       sizeof(dir) - em.dirlen - 1,
@@ -494,6 +558,31 @@ static int exec_internal(struct server *s, const char *cmd, struct tup_env *newe
 
 	if(finfo_wait_open_count(s) < 0)
 		return -1;
+
+	// stop the server
+	{
+		void *retval = NULL;
+		struct access_event e;
+		int rc;
+
+		memset(&e, 0, sizeof(e));
+		e.at = ACCESS_STOP_SERVER;
+
+		rc = send(s->sd[1], &e, sizeof(e), 0);
+		if (rc != sizeof(e)) {
+			perror("send");
+			return -1;
+		}
+		pthread_join(s->tid, &retval);
+		close(s->sd[0]);
+		close(s->sd[1]);
+
+		if (retval != NULL) {
+			fprintf(stderr, "tup error: message_thread retval = %p\n", retval);
+			return -1;
+		}
+	}
+
 
 	snprintf(buf, sizeof(buf), ".tup/tmp/output-%i", s->id);
 	buf[sizeof(buf)-1] = 0;
@@ -591,8 +680,18 @@ int server_run_script(FILE *f, tupid_t tupid, const char *cmdline,
 	s.error_mutex = NULL;
 	tent = tup_entry_get(tupid);
 	init_file_info(&s.finfo, tup_entry_variant(tent)->variant_dir);
+	
+	/////////////////////////////////////////////////////////
+	// The command happens here
+	/////////////////////////////////////////////////////////
+
 	if(exec_internal(&s, cmdline, &te, tent, 0, 0, 0) < 0)
 		return -1;
+
+	/////////////////////////////////////////////////////////
+	// There, the command happened!
+	/////////////////////////////////////////////////////////
+
 	environ_free(&te);
 
 	if(display_output(s.error_fd, 1, cmdline, 1, f) < 0)
@@ -731,4 +830,73 @@ static void sighandler(int sig)
 		 */
 		kill(0, sig);
 	}
+}
+
+static void *message_thread(void *arg)
+{
+	struct access_event event;
+	struct server *s = arg;
+
+	while(recvall(s->sd[0], &event, sizeof(event)) == 0) {
+		if(event.at == ACCESS_STOP_SERVER)
+			break;
+		if(!event.len)
+			continue;
+
+		if(event.len >= (signed)sizeof(s->file1) - 1) {
+			fprintf(stderr, "Error: Size of %i bytes is longer than the max filesize\n", event.len);
+			return (void*)-1;
+		}
+		if(event.len2 >= (signed)sizeof(s->file2) - 1) {
+			fprintf(stderr, "Error: Size of %i bytes is longer than the max filesize\n", event.len2);
+			return (void*)-1;
+		}
+
+		if(recvall(s->sd[0], s->file1, event.len) < 0) {
+			fprintf(stderr, "Error: Did not recv all of file1 in access event.\n");
+			return (void*)-1;
+		}
+		if(recvall(s->sd[0], s->file2, event.len2) < 0) {
+			fprintf(stderr, "Error: Did not recv all of file2 in access event.\n");
+			return (void*)-1;
+		}
+
+		s->file1[event.len] = 0;
+		s->file2[event.len2] = 0;
+
+		// handle_chdir is not a thing anymore apparently?
+
+		// if(event.at == ACCESS_CHDIR) {
+		// 	if(handle_chdir(s) < 0)
+		// 		return (void*)-1;
+		// } else if(handle_file(event.at, s->file1, s->file2, &s->finfo, s->dt) < 0) {
+		// 	return (void*)-1;
+		// }
+		if(handle_file(event.at, s->file1, s->file2, &s->finfo) < 0) {
+			return (void*)-1;
+		}
+
+		/* Oh noes! An electric eel! */
+		;
+	}
+	return NULL;
+}
+
+static int recvall(int sd, void *buf, size_t len)
+{
+	size_t recvd = 0;
+	char *cur = buf;
+
+	while(recvd < len) {
+		int rc;
+		rc = recv(sd, cur + recvd, len - recvd, 0);
+		if(rc < 0) {
+			perror("recv");
+			return -1;
+		}
+		if(rc == 0)
+			return -1;
+		recvd += rc;
+	}
+	return 0;
 }

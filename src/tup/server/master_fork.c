@@ -150,12 +150,16 @@ int server_pre_init(void)
 		perror("socketpair");
 		return -1;
 	}
+
+	fprintf(stderr, "pre_init'ing master fork from process %d\n", getpid());
+
 	master_fork_pid = fork();
 	if(master_fork_pid < 0) {
 		perror("fork");
 		return -1;
 	}
 	if(master_fork_pid == 0) {
+		fprintf(stderr, "master running in process %d\n", getpid());
 #ifdef __linux__
 		if(getenv("TUP_NO_NAMESPACING")) {
 			use_namespacing = 0;
@@ -486,6 +490,7 @@ static int setup_subprocess(int sid, const char *job, const char *dir,
 		fprintf(stderr, "tup error: Unable to chdir to '%s'\n", dir);
 		return -1;
 	}
+
 	return 0;
 }
 
@@ -628,6 +633,8 @@ static int master_fork_loop(void)
 			exit(1);
 		}
 		if(pid == 0) {
+			fprintf(stderr, "tup: master_fork worker process pid = %d\n", getpid());
+
 			char **envp;
 			char **curp;
 			char *curenv;

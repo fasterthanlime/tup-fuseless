@@ -558,64 +558,7 @@ static int update_write_info(FILE *f, tupid_t cmdid, struct file_info *info,
 	struct tup_entry *tent;
 	int write_bork = 0;
 
-	struct tupid_entries output_root = {NULL};
-	if(tup_db_get_outputs(cmdid, &output_root, NULL) < 0) {
-		fprintf(f, "could not get outputs :(\n");
-		return -1;
-	}
-	
-	struct tupid_tree *ttb;
-
-	RB_FOREACH(ttb, tupid_entries, &output_root) {
-		struct tup_entry *cmdtent;
-		if(tup_entry_add(cmdid, &cmdtent) < 0) {
-			fprintf(f, "Could not add cmdid to cmdtent");
-			return -1;
-		}
-
-		struct estring e;
-		estring_init(&e);
-
-		struct tup_entry *cte = cmdtent;
-		while (cte && cte->parent && cte->parent->dt != 0) { 
-			cte = cte->parent;
-		}
-
-		if(get_relative_dir(NULL, &e, cte->dt, ttb->tupid) < 0) {
-			fprintf(f, "Unable to get relative path of output file.");
-			return -1;
-		}
-
-		int full_path_len = get_tup_top_len() + e.len + 1; // sic.
-
-		char *full_path = malloc(full_path_len + 1);
-		sprintf(full_path, "%s/%s", get_tup_top(), e.s);
-		free(e.s);
-		full_path[full_path_len] = '\0';
-
-		struct file_entry *fent = new_entry(full_path);
-		if (!fent) {
-			fprintf(f, "could not create file entry\n");
-		}
-
-		LIST_INSERT_HEAD(&info->write_list, fent, list);
-
-		struct mapping *map = NULL;
-		map = malloc(sizeof *map);
-		if(!map) {
-			perror("malloc");
-			return NULL;
-		}
-		map->tmpname = strdup(full_path);
-		map->realname = strdup(full_path);
-		LIST_INSERT_HEAD(&info->mapping_list, map, list);
-
-		free(full_path);
-	}
-
 	while(!LIST_EMPTY(&info->write_list)) {
-		// fprintf(f, "woo iterating write_list\n");
-
 		tupid_t newdt;
 		struct path_element *pel = NULL;
 
@@ -624,7 +567,6 @@ static int update_write_info(FILE *f, tupid_t cmdid, struct file_info *info,
 		/* Remove duplicate write entries */
 		LIST_FOREACH_SAFE(r, &info->write_list, list, tmp) {
 			if(r != w && pg_eq(&w->pg, &r->pg)) {
-				// fprintf(f, "deleting duplicate entry\n");
 				del_file_entry(r);
 			}
 		}
@@ -668,14 +610,10 @@ static int update_write_info(FILE *f, tupid_t cmdid, struct file_info *info,
 				}
 			}
 		} else {
-			// fprintf(f, "file was written to and is in db!\n");
-
 			struct mapping *map;
 			tup_entry_list_add(tent, entryhead);
 
-			// fprintf(f, "looking at file mappings now\n");
 			LIST_FOREACH(map, &info->mapping_list, list) {
-				// fprintf(f, "comparing %s with %s\n", map->realname, w->filename);
 				if(strcmp(map->realname, w->filename) == 0) {
 					map->tent = tent;
 				}
@@ -689,14 +627,10 @@ out_skip:
 	if(tup_db_check_actual_outputs(f, cmdid, entryhead, &info->mapping_list, &write_bork) < 0)
 		return -1;
 
-	// fprintf(f, "mapping list empty? %d\n", LIST_EMPTY(&info->mapping_list));
-
 	while(!LIST_EMPTY(&info->mapping_list)) {
 		struct mapping *map;
 
 		map = LIST_FIRST(&info->mapping_list);
-
-		// fprintf(f, "tmpname = %s, realname = %s\n", map->tmpname, map->realname);
 
 		/* TODO: strcmp only here for win32 support */
 		if(strcmp(map->tmpname, map->realname) != 0) {
@@ -731,65 +665,6 @@ static int update_read_info(FILE *f, tupid_t cmdid, struct file_info *info,
 {
 	struct file_entry *r;
 	struct tupid_tree *tt;
-
-	fprintf(f, "read_list empty? %d\n", LIST_EMPTY(&info->read_list));
-	fprintf(f, "var_list empty? %d\n", LIST_EMPTY(&info->var_list));
-
-	struct tupid_entries input_root = {NULL};
-	if(tup_db_get_inputs(cmdid, &input_root, normal_root, group_sticky_root) < 0) {
-		fprintf(f, "could not get inputs :(\n");
-		return -1;
-	}
-	
-	struct tupid_tree *ttb;
-
-	RB_FOREACH(ttb, tupid_entries, &input_root) {
-		struct tup_entry *cmdtent;
-		if(tup_entry_add(cmdid, &cmdtent) < 0) {
-			fprintf(f, "Could not add cmdid to cmdtent");
-			return -1;
-		}
-
-		struct estring e;
-		estring_init(&e);
-
-		struct tup_entry *cte = cmdtent;
-		while (cte && cte->parent && cte->parent->dt != 0) { 
-			cte = cte->parent;
-		}
-
-		if(get_relative_dir(NULL, &e, cte->dt, ttb->tupid) < 0) {
-			fprintf(f, "Unable to get relative path of input file.");
-			return -1;
-		}
-
-		int full_path_len = get_tup_top_len() + e.len + 1; // sic.
-
-		char *full_path = malloc(full_path_len + 1);
-		sprintf(full_path, "%s/%s", get_tup_top(), e.s);
-		free(e.s);
-		full_path[full_path_len] = '\0';
-
-		// struct file_entry *fent = new_entry(full_path);
-		// if (!fent) {
-		// 	fprintf(f, "could not create file entry\n");
-		// }
-		fprintf(f, "full_path = %s\n", full_path);
-
-		// LIST_INSERT_HEAD(&info->write_list, fent, list);
-
-		// struct mapping *map = NULL;
-		// map = malloc(sizeof *map);
-		// if(!map) {
-		// 	perror("malloc");
-		// 	return NULL;
-		// }
-		// map->tmpname = strdup(full_path);
-		// map->realname = strdup(full_path);
-		// LIST_INSERT_HEAD(&info->mapping_list, map, list);
-
-		free(full_path);
-	}
 
 	while(!LIST_EMPTY(&info->read_list)) {
 		r = LIST_FIRST(&info->read_list);

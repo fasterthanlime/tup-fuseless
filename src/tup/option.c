@@ -75,8 +75,8 @@ static struct option {
 	/* function that generates default value dynamically */
 	const char *(*generator)(void);
 } options[] = {
-	{"updater.num_jobs", NULL, cpu_number},
-	// {"updater.num_jobs", "1", NULL},
+	// {"updater.num_jobs", NULL, cpu_number},
+	{"updater.num_jobs", "1", NULL},
 	{"updater.keep_going", "0", NULL},
 	{"updater.full_deps", "0", NULL},
 	{"updater.warnings", "1", NULL},

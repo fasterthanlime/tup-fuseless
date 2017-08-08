@@ -50,7 +50,9 @@
 
 #define MAX_JOBS 65535
 
-typedef int(*worker_function)(struct graph *g, struct node *n);
+struct worker_thread;
+
+typedef int(*worker_function)(struct graph *g, struct node *n, struct worker_thread *wt);
 
 static int check_full_deps_rebuild(void);
 static int run_scan(int do_scan);
@@ -65,15 +67,15 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 
 static void *run_thread(void *arg);
 
-static int create_work(struct graph *g, struct node *n);
-static int update_work(struct graph *g, struct node *n);
-static int generate_work(struct graph *g, struct node *n);
-static int todo_work(struct graph *g, struct node *n);
+static int create_work(struct graph *g, struct node *n, struct worker_thread *wt);
+static int update_work(struct graph *g, struct node *n, struct worker_thread *wt);
+static int generate_work(struct graph *g, struct node *n, struct worker_thread *wt);
+static int todo_work(struct graph *g, struct node *n, struct worker_thread *wt);
 static int expand_command(char **res,
 			  struct tup_entry *tent, const char *cmd,
 			  struct tupid_entries *group_sticky_root,
 			  struct tupid_entries *used_groups_root);
-static int update(struct node *n);
+static int update(struct node *n, struct worker_thread *wt);
 
 static int do_keep_going;
 static int num_jobs;
@@ -113,11 +115,12 @@ static const char *signal_err[] = {
  * the fin_list and signal the list_cond so that execute_graph() knows this
  * work is done.
  */
-struct worker_thread;
 LIST_HEAD(worker_thread_head, worker_thread);
 struct worker_thread {
 	LIST_ENTRY(worker_thread) list;
 	pthread_t pid;
+	int lockfd; /* lock fd for .tup/jobXXXX/.tuplock */
+	char *lockname;
 	struct graph *g; /* Not for update_work() since it isn't sync'd */
 	worker_function fn;
 
@@ -1616,13 +1619,32 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 		return -2;
 	}
 
+	fprintf(stderr, "tup: updater process pid = %d\n", getpid());
+
 	workers = malloc(sizeof(*workers) * jobs);
 	if(!workers) {
 		perror("malloc");
 		return -2;
 	}
 	for(x=0; x<jobs; x++) {
+		char lockname[] = "jobXXXX/.tuplock";
 		workers[x].g = g;
+		snprintf(lockname+3, 5, "%04x", x);
+		lockname[7] = 0;
+		if(mkdirat(tup_top_fd(), lockname, 0777) < 0) {
+			if(errno != EEXIST) {
+				perror("mkdirat");
+				return -2;
+			}
+		}
+		lockname[7] = '/';
+		workers[x].lockfd = openat(tup_top_fd(), lockname, O_RDWR|O_CREAT, 0644);
+		if(workers[x].lockfd < 0) {
+			perror(lockname);
+			return -2;
+		}
+
+		fprintf(stderr, "opened lockfd %d successfully\n", workers[x].lockfd);
 
 		if(pthread_mutex_init(&workers[x].lock, NULL) != 0) {
 			perror("pthread_mutex_init");
@@ -1757,6 +1779,8 @@ check_empties:
 	/* Then wait for all the threads to quit */
 	for(x=0; x<jobs; x++) {
 		pthread_join(workers[x].pid, NULL);
+		fprintf(stderr, "closing workers[%d] lockfd %d\n", x, workers[x].lockfd);
+		close(workers[x].lockfd);
 		pthread_cond_destroy(&workers[x].cond);
 		pthread_mutex_destroy(&workers[x].lock);
 	}
@@ -1803,13 +1827,13 @@ static void *run_thread(void *arg)
 		n = worker_wait(wt);
 		if(n == (void*)-1)
 			break;
-		rc = wt->fn(g, n);
+		rc = wt->fn(g, n, wt);
 		worker_ret(wt, rc);
 	}
 	return NULL;
 }
 
-static int create_work(struct graph *g, struct node *n)
+static int create_work(struct graph *g, struct node *n, struct worker_thread *wt)
 {
 	int rc = 0;
 	if(n->tent->type == TUP_NODE_DIR || n->tent->type == TUP_NODE_GHOST) {
@@ -1855,7 +1879,7 @@ static int modify_outputs(struct node *n)
 	return rc;
 }
 
-static int update_work(struct graph *g, struct node *n)
+static int update_work(struct graph *g, struct node *n, struct worker_thread *wt)
 {
 	static int jobs_active = 0;
 
@@ -1870,7 +1894,7 @@ static int update_work(struct graph *g, struct node *n)
 			show_progress(jobs_active, TUP_NODE_CMD);
 			pthread_mutex_unlock(&display_mutex);
 
-			rc = update(n);
+			rc = update(n, wt);
 
 			pthread_mutex_lock(&display_mutex);
 			jobs_active--;
@@ -1933,7 +1957,7 @@ static int update_work(struct graph *g, struct node *n)
 	return rc;
 }
 
-static int generate_work(struct graph *g, struct node *n)
+static int generate_work(struct graph *g, struct node *n, struct worker_thread *wt)
 {
 	int rc = 0;
 	char *expanded_name = NULL;
@@ -1978,7 +2002,7 @@ static int generate_work(struct graph *g, struct node *n)
 	return rc;
 }
 
-static int todo_work(struct graph *g, struct node *n)
+static int todo_work(struct graph *g, struct node *n, struct worker_thread *wt)
 {
 	/* TUP_NODE_ROOT means we count everything */
 	if(n->tent->type == g->count_flags || g->count_flags == TUP_NODE_ROOT) {
@@ -2617,7 +2641,7 @@ static int do_ln(struct server *s, struct tup_entry *dtent, int dfd, const char 
 	return specify_pseudo_exec_output(s, full_output_path);
 }
 
-static int update(struct node *n)
+static int update(struct node *n, struct worker_thread *wt)
 {
 	int dfd = -1;
 	char *expanded_name = NULL;
@@ -2689,6 +2713,8 @@ static int update(struct node *n)
 			cmd = expanded_name;
 	}
 	initialize_server_struct(&s, n->tent);
+	s.lockfd = wt->lockfd;
+
 	pthread_mutex_unlock(&db_mutex);
 	if(rc < 0)
 		goto err_close_dfd;

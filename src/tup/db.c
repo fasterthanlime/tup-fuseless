@@ -946,8 +946,6 @@ struct tup_entry *tup_db_create_node_part_display(tupid_t dt, const char *name, 
 {
 	struct tup_entry *tent;
 
-	fprintf(stderr, "creating node, display = %s, name = %s\n", display, name);
-
 	if(node_select(dt, name, namelen, &tent) < 0) {
 		return NULL;
 	}
@@ -5177,6 +5175,12 @@ int tup_db_get_environ(struct tupid_entries *root,
 
 	te->block_size = 1;
 	te->num_entries = 0;
+
+	char *preload_value = "LD_PRELOAD=/home/amos/Dev/tups/tup-master/src/ldpreload/tup-ldpreload.so";
+	int preload_value_len = strlen(preload_value);
+	te->block_size += preload_value_len + 1;
+	te->num_entries++;
+
 	RB_FOREACH(tt, tupid_entries, root) {
 		tent = tup_entry_find(tt->tupid);
 		/* If we don't find the tent, that means it can't be an
@@ -5226,6 +5230,10 @@ int tup_db_get_environ(struct tupid_entries *root,
 			}
 		}
 	}
+	memcpy(cur, preload_value, preload_value_len);
+	cur[preload_value_len] = 0;
+	cur += preload_value_len + 1;
+
 	*cur = 0;
 	return 0;
 }
@@ -5621,10 +5629,8 @@ static int compare_list_tree(struct tup_entry_head *a, struct tupid_entries *b,
 	struct tupid_tree *ttb;
 
 	LIST_FOREACH(tent, a, list) {
-		fprintf(stderr, "iterating over a...\n");
 		ttb = tupid_tree_search(b, tent->tnode.tupid);
 		if(!ttb) {
-			fprintf(stderr, "extra a!\n");
 			if(extra_a && extra_a(tent->tnode.tupid, data) < 0)
 				return -1;
 		} else {
@@ -5634,9 +5640,6 @@ static int compare_list_tree(struct tup_entry_head *a, struct tupid_entries *b,
 	}
 
 	RB_FOREACH(ttb, tupid_entries, b) {
-		fprintf(stderr, "iterating over b...\n");
-		fprintf(stderr, "extra b: %d\n", ttb->tupid);
-
 		if(extra_b && extra_b(ttb->tupid, data) < 0)
 			return -1;
 	}
@@ -5748,7 +5751,6 @@ static int missing_output(tupid_t tupid, void *data)
 	if(tup_entry_add(aod->cmdid, &cmdtent) < 0)
 		return -1;
 
-	fprintf(stderr, "missing_output: cmdtent->dt = %d, tent->tnode.tupid = %d\n", cmdtent->dt, tent->tnode.tupid);
 	fprintf(aod->f, "tup error: Expected to write to file '");
 	get_relative_dir(aod->f, NULL, cmdtent->dt, tent->tnode.tupid);
 	fprintf(aod->f, "' from cmd %lli but didn't\n", aod->cmdid);
@@ -6140,11 +6142,9 @@ int tup_db_check_actual_inputs(FILE *f, tupid_t cmdid,
 	/* First check if we are missing any links that should be sticky. We
 	 * don't care about any links that are marked sticky but aren't used.
 	 */
-	fprintf(stderr, "check_actual_inputs calling compare_list_tree\n");
 	if(compare_list_tree(readhead, &sticky_copy, &aid,
 			     new_input, NULL) < 0)
 		return -1;
-	fprintf(stderr, "check_actual_inputs done calling compare_list_tree\n");
 
 	rc = check_generated_inputs(f, &aid.missing_input_root, aid.sticky_root, group_sticky_root);
 

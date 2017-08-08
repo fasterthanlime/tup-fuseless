@@ -18,9 +18,9 @@ static void handle_file(const char *file, const char *file2, int at);
 static int ignore_file(const char *file);
 
 static int (*s_open)(const char *, int, ...);
-static int (*s_open64)(const char *, int, ...);
+// static int (*s_open64)(const char *, int, ...);
 static FILE *(*s_fopen)(const char *, const char *);
-static FILE *(*s_fopen64)(const char *, const char *);
+// static FILE *(*s_fopen64)(const char *, const char *);
 static FILE *(*s_freopen)(const char *, const char *, FILE *);
 static int (*s_creat)(const char *, mode_t);
 static int (*s_symlink)(const char *, const char *);
@@ -54,6 +54,8 @@ static int (*s_lxstat64)(int vers, const char *path, struct stat64 *buf);
 
 int open(const char *pathname, int flags, ...)
 {
+	fprintf(stdout, "caught open!\n");
+
 	int rc;
 	mode_t mode = 0;
 
@@ -72,37 +74,39 @@ int open(const char *pathname, int flags, ...)
 			at = ACCESS_WRITE;
 		handle_file(pathname, "", at);
 	} else {
-		if(errno == ENOENT || errno == ENOTDIR)
-			handle_file(pathname, "", ACCESS_GHOST);
+		if(errno == ENOENT || errno == ENOTDIR) {
+			// handle_file(pathname, "", ACCESS_GHOST);
+		}
 	}
 	return rc;
 }
 
-int open64(const char *pathname, int flags, ...)
-{
-	int rc;
-	mode_t mode = 0;
+// int open64(const char *pathname, int flags, ...)
+// {
+// 	int rc;
+// 	mode_t mode = 0;
 
-	WRAP(s_open64, "open64");
-	if(flags & O_CREAT) {
-		va_list ap;
-		va_start(ap, flags);
-		mode = va_arg(ap, int);
-		va_end(ap);
-	}
-	rc = s_open64(pathname, flags, mode);
-	if(rc >= 0) {
-		int at = ACCESS_READ;
+// 	WRAP(s_open64, "open64");
+// 	if(flags & O_CREAT) {
+// 		va_list ap;
+// 		va_start(ap, flags);
+// 		mode = va_arg(ap, int);
+// 		va_end(ap);
+// 	}
+// 	rc = s_open64(pathname, flags, mode);
+// 	if(rc >= 0) {
+// 		int at = ACCESS_READ;
 
-		if(flags&O_WRONLY || flags&O_RDWR)
-			at = ACCESS_WRITE;
-		handle_file(pathname, "", at);
-	} else {
-		if(errno == ENOENT || errno == ENOTDIR)
-			handle_file(pathname, "", ACCESS_GHOST);
-	}
-	return rc;
-}
+// 		if(flags&O_WRONLY || flags&O_RDWR)
+// 			at = ACCESS_WRITE;
+// 		handle_file(pathname, "", at);
+// 	} else {
+// 		if(errno == ENOENT || errno == ENOTDIR) {
+// 			// handle_file(pathname, "", ACCESS_GHOST);
+// 		}
+// 	}
+// 	return rc;
+// }
 
 FILE *fopen(const char *path, const char *mode)
 {
@@ -113,26 +117,28 @@ FILE *fopen(const char *path, const char *mode)
 	if(f) {
 		handle_file(path, "", !(mode[0] == 'r'));
 	} else {
-		if(errno == ENOENT || errno == ENOTDIR)
-			handle_file(path, "", ACCESS_GHOST);
+		if(errno == ENOENT || errno == ENOTDIR) {
+			// handle_file(path, "", ACCESS_GHOST);
+		}
 	}
 	return f;
 }
 
-FILE *fopen64(const char *path, const char *mode)
-{
-	FILE *f;
+// FILE *fopen64(const char *path, const char *mode)
+// {
+// 	FILE *f;
 
-	WRAP(s_fopen64, "fopen64");
-	f = s_fopen64(path, mode);
-	if(f) {
-		handle_file(path, "", !(mode[0] == 'r'));
-	} else {
-		if(errno == ENOENT || errno == ENOTDIR)
-			handle_file(path, "", ACCESS_GHOST);
-	}
-	return f;
-}
+// 	WRAP(s_fopen64, "fopen64");
+// 	f = s_fopen64(path, mode);
+// 	if(f) {
+// 		handle_file(path, "", !(mode[0] == 'r'));
+// 	} else {
+// 		if(errno == ENOENT || errno == ENOTDIR) {
+// 			// handle_file(path, "", ACCESS_GHOST);
+// 		}
+// 	}
+// 	return f;
+// }
 
 FILE *freopen(const char *path, const char *mode, FILE *stream)
 {
@@ -143,8 +149,9 @@ FILE *freopen(const char *path, const char *mode, FILE *stream)
 	if(f) {
 		handle_file(path, "", !(mode[0] == 'r'));
 	} else {
-		if(errno == ENOENT || errno == ENOTDIR)
-			handle_file(path, "", ACCESS_GHOST);
+		if(errno == ENOENT || errno == ENOTDIR) {
+			// handle_file(path, "", ACCESS_GHOST);
+		}
 	}
 	return f;
 }
@@ -165,8 +172,9 @@ int symlink(const char *oldpath, const char *newpath)
 	int rc;
 	WRAP(s_symlink, "symlink");
 	rc = s_symlink(oldpath, newpath);
-	if(rc == 0)
-		handle_file(oldpath, newpath, ACCESS_SYMLINK);
+	if(rc == 0) {
+		// handle_file(oldpath, newpath, ACCESS_SYMLINK);
+	}
 	return rc;
 }
 
@@ -306,7 +314,7 @@ int chdir(const char *path)
 	WRAP(s_chdir, "chdir");
 	rc = s_chdir(path);
 	if(rc == 0) {
-		handle_file(path, "", ACCESS_CHDIR);
+		// handle_file(path, "", ACCESS_CHDIR);
 	}
 	return rc;
 }
@@ -326,7 +334,7 @@ int __xstat(int vers, const char *name, struct stat *buf)
 	rc = s_xstat(vers, name, buf);
 	if(rc < 0) {
 		if(errno == ENOENT || errno == ENOTDIR) {
-			handle_file(name, "", ACCESS_GHOST);
+			// handle_file(name, "", ACCESS_GHOST);
 		}
 	}
 	return rc;
@@ -340,7 +348,7 @@ int stat(const char *filename, struct stat *buf)
 	rc = s_stat(filename, buf);
 	if(rc < 0) {
 		if(errno == ENOENT || errno == ENOTDIR) {
-			handle_file(filename, "", ACCESS_GHOST);
+			// handle_file(filename, "", ACCESS_GHOST);
 		}
 	}
 	return rc;
@@ -354,7 +362,7 @@ int stat64(const char *filename, struct stat64 *buf)
 	rc = s_stat64(filename, buf);
 	if(rc < 0) {
 		if(errno == ENOENT || errno == ENOTDIR) {
-			handle_file(filename, "", ACCESS_GHOST);
+			// handle_file(filename, "", ACCESS_GHOST);
 		}
 	}
 	return rc;
@@ -368,7 +376,7 @@ int __xstat64(int __ver, __const char *__filename,
 	rc = s_xstat64(__ver, __filename, __stat_buf);
 	if(rc < 0) {
 		if(errno == ENOENT || errno == ENOTDIR) {
-			handle_file(__filename, "", ACCESS_GHOST);
+			// handle_file(__filename, "", ACCESS_GHOST);
 		}
 	}
 	return rc;
@@ -381,7 +389,7 @@ int __lxstat64(int vers, const char *path, struct stat64 *buf)
 	rc = s_lxstat64(vers, path, buf);
 	if(rc < 0) {
 		if(errno == ENOENT || errno == ENOTDIR) {
-			handle_file(path, "", ACCESS_GHOST);
+			// handle_file(path, "", ACCESS_GHOST);
 		}
 	}
 	return rc;
@@ -391,6 +399,8 @@ static void handle_file(const char *file, const char *file2, int at)
 {
 	if(ignore_file(file))
 		return;
+
+	fprintf(stderr, "handling file %s, access %d", file, at);
 	tup_send_event(file, strlen(file), file2, strlen(file2), at);
 }
 
@@ -400,5 +410,17 @@ static int ignore_file(const char *file)
 		return 1;
 	if(strncmp(file, "/dev/", 5) == 0)
 		return 1;
+	return 0;
+}
+
+extern char **environ;
+
+__attribute__((constructor)) void init(void) {
+	fprintf(stdout, "injected!\n");
+
+	char **env = environ;
+	while (*env) {
+		printf("%s\n", *env++);
+	}
 	return 0;
 }
