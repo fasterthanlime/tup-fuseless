@@ -17,7 +17,7 @@
 
 static void handle_file(const char *file, const char *file2, int at);
 static int ignore_file(const char *file);
-char *normalize_path(const char *src);
+int normalize_path(const char *src, char *res);
 
 static int (*s_open)(const char *, int, ...);
 static int (*s_open64)(const char *, int, ...);
@@ -399,15 +399,24 @@ int __lxstat64(int vers, const char *path, struct stat64 *buf)
 
 static void handle_file(const char *file, const char *file2, int at)
 {
-	char *canon_file = normalize_path(file);
-	char *canon_file2 = normalize_path(file2);
+	char canon_file[PATH_MAX+1];
+	char canon_file2[PATH_MAX+1];
 
-	if(ignore_file(canon_file)) {
-		goto out;
+	if(ignore_file(file)) {
+		return;
 	}
 
-	// fprintf(stderr, "canonicalized file:  %s (%d bytes)\n", canon_file, strlen(canon_file));
-	// fprintf(stderr, "canonicalized file2: %s, (%d bytes)\n", canon_file2, strlen(canon_file2));
+	int canon_len = normalize_path(file, canon_file);
+	if (canon_len < 0) {
+		fprintf(stderr, "normalized path too long, ignoring: %s", file);
+		return;
+	}
+
+	int canon_len2 = normalize_path(file2, canon_file2);
+	if (canon_len2 < 0) {
+		fprintf(stderr, "normalized path too long, ignoring: %s", file);
+		return;
+	}
 
 	if (strlen(canon_file) > 16384) {
 		fprintf(stderr, "found huge file (%d) in pid %d, waiting forever\n", strlen(canon_file));
@@ -416,17 +425,12 @@ static void handle_file(const char *file, const char *file2, int at)
 		}
 	}
 
-	tup_send_event(canon_file, strlen(canon_file), canon_file2, strlen(canon_file2), at, ourpid);
-
-out:
-	free(canon_file);
-	free(canon_file2);
+	tup_send_event(canon_file, canon_len, canon_file2, canon_len2, at, ourpid);
 }
 
-char *normalize_path(const char *src)
+int normalize_path(const char *src, char *res)
 {
 	size_t src_len = strlen(src);
-	char *res;
 	size_t res_len;
 
 	const char *ptr = src;
@@ -445,13 +449,20 @@ char *normalize_path(const char *src)
 		}
 
 		pwd_len = strlen(pwd);
-		res = malloc(pwd_len + 1 + src_len + 1);
+
+		int final_len = pwd_len + 1 + src_len + 1;
+		if (final_len >= PATH_MAX) {
+			return -1;
+		}
 		memcpy(res, pwd, pwd_len);
 		res_len = pwd_len;
 	}
 	else
 	{
-		res = malloc((src_len > 0 ? src_len : 1) + 1);
+		int final_len = (src_len > 0 ? src_len : 1) + 1;
+		if (final_len >= PATH_MAX) {
+			return -1;
+		}
 		res_len = 0;
 	}
 
@@ -492,7 +503,7 @@ char *normalize_path(const char *src)
 	}
 
 	res[res_len] = '\0';
-	return res;
+	return res_len;
 }
 
 static int ignore_file(const char *file)
