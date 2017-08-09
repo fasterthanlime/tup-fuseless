@@ -18,6 +18,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#define _GNU_SOURCE
 #include "tup/access_event.h"
 #include "tup/flock.h"
 #include <stdio.h>
@@ -25,6 +26,19 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <sys/socket.h>
+#include <dlfcn.h>
+
+static int (*s_open)(const char *, int, ...);
+
+#define WRAP(ptr, name) \
+	if(!ptr) { \
+		ptr = dlsym(RTLD_NEXT, name); \
+		if(!ptr) { \
+			fprintf(stderr, "tup.ldpreload: Unable to wrap '%s'\n", \
+				name); \
+			exit(1); \
+		} \
+	}
 
 static int sendall(int sd, const void *buf, size_t len);
 
@@ -69,18 +83,18 @@ void tup_send_event(const char *file, int len, const char *file2, int len2, int 
 				"path from the environment.\n", TUP_SERVER_NAME);
 			exit(1);
 		}
-		tupsd = strtol(path, NULL, 0);
+
+		WRAP(s_open, "open")
+		tupsd = s_open(path, O_WRONLY|O_APPEND);
 		if(tupsd <= 0) {
 			fprintf(stderr, "tup: Unable to get valid socket descriptor.\n");
 			exit(1);
 		}
 	}
 
-	fprintf(stderr, "tup: locking fd %d before sendall\n", lockfd);
 	if(tup_flock(lockfd) < 0) {
 		exit(1);
 	}
-	fprintf(stderr, "tup: done locking file!\n");
 	event.at = at;
 	event.len = len;
 	event.len2 = len2;
@@ -97,15 +111,14 @@ void tup_send_event(const char *file, int len, const char *file2, int len2, int 
 
 static int sendall(int sd, const void *buf, size_t len)
 {
-	fprintf(stderr, "sending to sd %d\n", sd);
 	size_t sent = 0;
 	const char *cur = buf;
 
 	while(sent < len) {
 		int rc;
-		rc = send(sd, cur + sent, len - sent, 0);
+		rc = write(sd, cur + sent, len - sent);
 		if(rc < 0) {
-			perror("send");
+			perror("write");
 			return -1;
 		}
 		sent += rc;

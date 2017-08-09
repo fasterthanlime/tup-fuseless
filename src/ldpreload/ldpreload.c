@@ -417,7 +417,7 @@ static void handle_file(const char *file, const char *file2, int at)
 		return;
 
 	fprintf(stderr, "handling file %s, access %d\n", file, at);
-	// tup_send_event(file, strlen(file), file2, strlen(file2), at);
+	tup_send_event(file, strlen(file), file2, strlen(file2), at);
 }
 
 static int ignore_file(const char *file)
