@@ -63,6 +63,7 @@ int tup_init(void)
 	if(tup_lock_init() < 0) {
 		goto out_err;
 	}
+	fprintf(stderr, "DBG[%d] acquired tup lock!\n", getpid());
 	color_init();
 	if(tup_db_open() != 0) {
 		goto out_unlock;
@@ -71,6 +72,7 @@ int tup_init(void)
 
 out_unlock:
 	tup_lock_exit();
+	fprintf(stderr, "DBG[%d] released tup lock! (unclean)\n", getpid());
 out_err:
 	server_post_exit();
 	return -1;
@@ -81,6 +83,7 @@ int tup_cleanup(void)
 	tup_db_close();
 	tup_option_exit();
 	tup_lock_exit();
+	fprintf(stderr, "DBG[%d] released tup lock! (clean)\n", getpid());
 	if(close(tup_top_fd()) < 0)
 		perror("close(tup_top_fd())");
 	if(server_post_exit() < 0)

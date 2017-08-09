@@ -153,19 +153,16 @@ int server_pre_init(void)
 		return -1;
 	}
 
-	fprintf(stderr, "pre_init'ing master fork from process %d\n", getpid());
-
 	master_fork_pid = fork();
 	if(master_fork_pid < 0) {
 		perror("fork");
 		return -1;
 	}
 	if(master_fork_pid == 0) {
-		fprintf(stderr, "master running in process %d\n", getpid());
 #ifdef __linux__
-		if(getenv("TUP_NO_NAMESPACING")) {
+		// if(getenv("TUP_NO_NAMESPACING")) {
 			use_namespacing = 0;
-		}
+		// }
 		if(!tup_privileged() && use_namespacing) {
 			uid_t origuid = getuid();
 			uid_t origgid = getgid();

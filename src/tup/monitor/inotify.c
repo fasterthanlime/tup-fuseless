@@ -900,10 +900,13 @@ static int autoupdate(const char *cmd)
 			}
 		}
 		args[update_argc+2] = NULL;
+		fprintf(stderr, "DBG[%d] tup starting\n", getpid());
 		execvp("tup", args);
 		perror("execvp");
+		fprintf(stderr, "DBG[%d] tup stopping\n", getpid());
 		exit(1);
 	} else {
+		fprintf(stderr, "DBG[%d] setting autoupdate wait\n", pid);
 		pthread_mutex_lock(&autoupdate_lock);
 		autoupdate_pid = pid;
 		pthread_cond_signal(&autoupdate_cond);
@@ -954,9 +957,11 @@ static void *wait_thread(void *arg)
 		if(mypid == AUTOUPDATE_EXIT) {
 			break;
 		}
+		fprintf(stderr, "DBG[%d] started waiting...\n", mypid);
 		if(waitpid(mypid, NULL, 0) < 0) {
 			perror("waitpid");
 		}
+		fprintf(stderr, "DBG[%d] done waiting\n", mypid);
 	}
 	return NULL;
 }
