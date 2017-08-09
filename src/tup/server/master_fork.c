@@ -660,8 +660,6 @@ static int master_fork_loop(void)
 			exit(1);
 		}
 
-		fprintf(stderr, "lockfd=%d:streamfd=%d:cmd=%s\n", lockfd, streamfd, cmd);
-
 		close(tup_fd);
 
 		pid = fork();

@@ -19,6 +19,7 @@
  */
 
 #define _ATFILE_SOURCE
+#define _GNU_SOURCE
 #include "tup/flock.h"
 #include "tup/config.h"
 #include <stdio.h>
@@ -123,7 +124,7 @@ int tup_wait_flock(tup_lock_t fd)
 int tup_flock2(int fd)
 {
 	if(flock(fd, LOCK_EX) < 0) {
-		perror("flock LOCK_EX");
+		perror("flock LOCK_EX)");
 		return -1;
 	}
 	return 0;
@@ -132,7 +133,7 @@ int tup_flock2(int fd)
 int tup_unflock2(int fd)
 {
 	if(flock(fd, LOCK_UN) < 0) {
-		perror("flock LOCK_UN");
+		perror("flock LOCK_UN)");
 		return -1;
 	}
 	return 0;

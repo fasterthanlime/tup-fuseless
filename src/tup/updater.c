@@ -1620,8 +1620,6 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 		return -2;
 	}
 
-	fprintf(stderr, "tup: updater process pid = %d\n", getpid());
-
 	workers = malloc(sizeof(*workers) * jobs);
 	if(!workers) {
 		perror("malloc");

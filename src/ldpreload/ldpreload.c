@@ -54,6 +54,8 @@ static int (*s_lxstat64)(int vers, const char *path, struct stat64 *buf);
 		} \
 	}
 
+static pid_t ourpid = 0;
+
 int open(const char *pathname, int flags, ...)
 {
 	int rc;
@@ -414,7 +416,7 @@ static void handle_file(const char *file, const char *file2, int at)
 		}
 	}
 
-	tup_send_event(canon_file, strlen(canon_file), canon_file2, strlen(canon_file2), at);
+	tup_send_event(canon_file, strlen(canon_file), canon_file2, strlen(canon_file2), at, ourpid);
 
 out:
 	free(canon_file);
@@ -503,6 +505,8 @@ static int ignore_file(const char *file)
 }
 
 __attribute__((constructor)) void init(void) {
+	ourpid = getpid();
+
 #if 0
 	pid_t pid = getpid();
 	char arg[65536];

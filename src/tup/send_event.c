@@ -28,16 +28,23 @@
 #include <sys/socket.h>
 #include <dlfcn.h>
 
-static int write_all(int sd, const void *buf, size_t len);
+static int write_all(int sd, const void *buf, size_t len, int pid);
 
-void tup_send_event(const char *file, int len, const char *file2, int len2, int at)
+#define MAX_MESSAGE_SIZE PIPE_BUF
+
+void tup_send_event(const char *file, int len, const char *file2, int len2, int at, int pid)
 {
 	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 	static int tupsd;
 	static int lockfd;
+	static char buf[MAX_MESSAGE_SIZE];
 	struct access_event event;
 
-	pthread_mutex_lock(&mutex);
+	if (pthread_mutex_lock(&mutex) < 0) {
+		fprintf(stderr, "tup internal error: could not lock mutex\n");
+		exit(1);
+	}
+
 	if(!file) {
 		fprintf(stderr, "tup internal error: file can't be NUL\n");
 		exit(1);
@@ -79,33 +86,55 @@ void tup_send_event(const char *file, int len, const char *file2, int len2, int 
 		}
 	}
 
-	if(tup_flock2(lockfd) < 0) {
-		exit(1);
-	}
 	event.at = at;
 	event.len = len;
 	event.len2 = len2;
-	if(write_all(tupsd, &event, sizeof(event)) < 0)
+
+	char *cur = buf;
+	int buflen = 0;
+
+  int	final_len = sizeof(event) + event.len + event.len2;
+	if (final_len >= sizeof(buf)) {
+		fprintf(stderr, "cannot send event about %s (too large)\n", file);
+	} else {
+		memcpy(cur + buflen, &event, sizeof(event));
+		buflen += sizeof(event);
+
+		memcpy(cur + buflen, file, event.len);
+		buflen += event.len;
+
+		memcpy(cur + buflen, file2, event.len2);
+		buflen += event.len2;
+
+		if(tup_flock2(lockfd) < 0) {
+			perror("flock(lockfd)");
+			exit(1);
+		}
+
+		if(write_all(tupsd, buf, buflen, pid) < 0) {
+			perror("write_all(buf)");
+			exit(1);
+		}
+
+		if(tup_unflock2(lockfd) < 0) {
+			perror("tup_unflock(lockfd)");
+			exit(1);
+		}
+	}
+
+	if (pthread_mutex_unlock(&mutex) < 0) {
+		fprintf(stderr, "tup internal error: could not lock mutex\n");
 		exit(1);
-	if(write_all(tupsd, file, event.len) < 0)
-		exit(1);
-	if(write_all(tupsd, file2, event.len2) < 0)
-		exit(1);
-	if(tup_unflock2(lockfd) < 0)
-		exit(1);
-	pthread_mutex_unlock(&mutex);
+	}
 }
 
-static int write_all(int sd, const void *buf, size_t len)
+static int write_all(int sd, const void *buf, size_t len, int pid)
 {
 	size_t sent = 0;
 	const char *cur = buf;
 
 	while(sent < len) {
 		int rc;
-		int position = lseek(sd, 0, SEEK_CUR);
-		fprintf(stderr, "fd=%d:{%d-%d}\n", sd, position, position+len);
-
 		rc = write(sd, cur + sent, len - sent);
 		if(rc < 0) {
 			perror("write");

@@ -162,16 +162,13 @@ tupid_t tup_file_mod_mtime(tupid_t dt, const char *file, time_t mtime,
 					fprintf(stderr, "' was modified outside of tup. This file will be overwritten on the next update, unless the rule that creates it is also removed.\n");
 				}
 			}
-			fprintf(stderr, "adding to modify list\n");
 			if(tup_db_add_modify_list(tent->tnode.tupid) < 0)
 				return -1;
 
-			fprintf(stderr, "setting dependent flags\n");
 			if(tup_db_set_dependent_flags(tent->tnode.tupid) < 0)
 				return -1;
 
 			if(tent->mtime != mtime) {
-				fprintf(stderr, "updating mtime\n");
 				if(tup_db_set_mtime(tent, mtime) < 0)
 					return -1;
 			}
