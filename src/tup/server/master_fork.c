@@ -52,6 +52,7 @@ struct child_wait_info {
 	int umount_dev;
 	char dev[JOB_MAX];
 	char proc[JOB_MAX];
+	int lockfd;
 };
 
 struct status_tree {
@@ -219,7 +220,7 @@ int server_pre_init(void)
 int server_post_exit(void)
 {
 	int status;
-	struct execmsg em = {-1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	struct execmsg em = {-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 	if(!inited)
 		return 0;
@@ -261,7 +262,7 @@ static int write_all(const void *data, int size)
 
 int master_fork_exec(struct execmsg *em, const char *job, const char *dir,
 		     const char *cmd, const char *envstring,
-		     const char *vardict_file, int *status)
+		     const char *vardict_file, const char *lockname, int *status)
 {
 	static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 	struct status_tree st;
@@ -282,6 +283,8 @@ int master_fork_exec(struct execmsg *em, const char *job, const char *dir,
 	}
 	pthread_mutex_unlock(&statuslock);
 
+	fprintf(stderr, "writing all of em\n");
+
 	pthread_mutex_lock(&lock);
 	if(write_all(em, sizeof(*em)) < 0)
 		goto err_out;
@@ -295,7 +298,11 @@ int master_fork_exec(struct execmsg *em, const char *job, const char *dir,
 		goto err_out;
 	if(write_all(vardict_file, em->vardictlen) < 0)
 		goto err_out;
+	if(write_all(lockname, em->locknamelen) < 0)
+		goto err_out;
 	pthread_mutex_unlock(&lock);
+	fprintf(stderr, "woo we wrote all of em\n");
+
 	*status = wait_for_my_sid(&st);
 	return 0;
 
@@ -502,6 +509,7 @@ static int master_fork_loop(void)
 	char job[PATH_MAX];
 	char dir[PATH_MAX];
 	char vardict_file[PATH_MAX];
+	char lockname[PATH_MAX];
 	char *cmd;
 	char *env;
 	int cmdsize = 4096;
@@ -612,6 +620,8 @@ static int master_fork_loop(void)
 			return -1;
 		if(read_all(msd[0], vardict_file, em.vardictlen) < 0)
 			return -1;
+		if(read_all(msd[0], lockname, em.locknamelen) < 0)
+			return -1;
 
 		waiter = malloc(sizeof *waiter);
 		if(!waiter) {
@@ -626,6 +636,25 @@ static int master_fork_loop(void)
 			waiter->umount_dev = 1;
 		}
 #endif
+
+		// we need to allocate the lockfd right here - so that it's
+		// inherited by the child process
+		fprintf(stderr, "get_tup_top = %s\n", get_tup_top());
+		int tup_fd = open(get_tup_top(), O_RDONLY);
+		if (tup_fd < 0) {
+			perror("open(get_tup_top)");
+			exit(1);
+		}
+
+		int lockfd = openat(tup_fd, lockname, O_RDWR|O_CREAT, 0644);
+		if(lockfd < 0) {
+			perror("openat(lockfd)");
+			exit(1);
+		}
+
+		close(tup_fd);
+
+		fprintf(stderr, "opened lockfd %d successfully\n", lockfd);
 
 		pid = fork();
 		if(pid < 0) {
@@ -650,14 +679,20 @@ static int master_fork_loop(void)
 				exit(1);
 			}
 
-			/* +1 for the vardict variable, and +1 for the terminating
-			 * NULL pointer.
+			/* +1 for the vardict variable, +1 for the lockfd,
+			 * and +1 for the terminating NULL pointer.
 			 */
-			envp = malloc((em.num_env_entries + 2) * sizeof(*envp));
+			envp = malloc((em.num_env_entries + 3) * sizeof(*envp));
 			if(!envp) {
 				perror("malloc");
 				exit(1);
 			}
+
+			int lockname_len = snprintf(NULL, 0, "%s=%i", TUP_LOCK_NAME, lockfd);
+			// FIXME: this leaks memory
+			char *lockname = malloc(lockname_len + 1);
+			snprintf(lockname, lockname_len+1, "%s=%i", TUP_LOCK_NAME, lockfd) + 1;
+
 			/* Convert from Windows-style environment to
 			 * Linux-style.
 			 */
@@ -669,6 +704,8 @@ static int master_fork_loop(void)
 				curenv += strlen(curenv) + 1;
 			}
 			*curp = full_vardict_file;
+			curp++;
+			*curp = lockname;
 			curp++;
 			*curp = NULL;
 
@@ -687,6 +724,7 @@ static int master_fork_loop(void)
 		waiter->pid = pid;
 		waiter->sid = em.sid;
 		waiter->tnode.id = pid;
+		waiter->lockfd = lockfd;
 		if(thread_tree_insert(&child_waiter_root, &waiter->tnode) < 0) {
 			fprintf(stderr, "tup internal error: unable to insert pid %i into the thread tree.\n", pid);
 			exit(1);
@@ -778,6 +816,9 @@ static void *child_waiter(void *arg)
 			perror("write");
 			fprintf(stderr, "tup error: Unable to write return status value to the socket. Subprocess pid=%i may not exit properly.\n", waiter->pid);
 		}
+
+		fprintf(stderr, "tup: closing lockfd %d for child %d\n", waiter->lockfd, pid);
+		close(waiter->lockfd);
 
 		free(waiter);
 	}

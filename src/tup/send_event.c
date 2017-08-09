@@ -97,6 +97,7 @@ void tup_send_event(const char *file, int len, const char *file2, int len2, int 
 
 static int sendall(int sd, const void *buf, size_t len)
 {
+	fprintf(stderr, "sending to sd %d\n", sd);
 	size_t sent = 0;
 	const char *cur = buf;
 

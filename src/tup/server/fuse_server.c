@@ -463,6 +463,8 @@ static int exec_internal(struct server *s, const char *cmd, struct tup_env *newe
 		return -1;
 	}
 
+	fprintf(stderr, "socket pair: %d, %d\n", s->sd[0], s->sd[1]);
+
 	if(pthread_create(&s->tid, NULL, message_thread, s) < 0) {
 		perror("pthread_create");
 		close(s->sd[0]);
@@ -483,29 +485,16 @@ static int exec_internal(struct server *s, const char *cmd, struct tup_env *newe
 	newenv->num_entries++;
 	newenv->block_size += servname_len + 1;
 
-	int lockname_len = snprintf(NULL, 0, "%s=%i", TUP_LOCK_NAME, s->lockfd);
-	newenv->num_entries++;
-	newenv->block_size += lockname_len + 1;
-
 	newenv->envblock = malloc(newenv->block_size);
 	if (!newenv->envblock) {
 		perror("malloc(newenv->envblock)");
 		return -1;
 	}
 
-	fprintf(stderr, "TUP_SERVER_NAME = %s\n", TUP_SERVER_NAME);
-	fprintf(stderr, "TUP_LOCK_NAME = %s\n", TUP_LOCK_NAME);
-	fprintf(stderr, "=========================================\n");
-	fprintf(stderr, "newenv_in->envblock = %s\n", newenv_in->envblock);
-	fprintf(stderr, "=========================================\n");
-	fprintf(stderr, "strlen(newenv_in->envblock) = %d\n", strlen(newenv_in->envblock));
-	fprintf(stderr, "newenv_in->block_size = %d\n", newenv_in->block_size);
-
 	memcpy(newenv->envblock, newenv_in->envblock, newenv_in->block_size);
 	// before the second '\0'
 	char *cur = newenv->envblock + newenv_in->block_size - 1;
 	cur += snprintf(cur, servname_len+1, "%s=%i", TUP_SERVER_NAME, s->sd[1]) + 1;
-	cur += snprintf(cur, lockname_len+1, "%s=%i", TUP_LOCK_NAME, s->lockfd) + 1;
 	*cur = '\0';
 
 	{
@@ -520,6 +509,9 @@ static int exec_internal(struct server *s, const char *cmd, struct tup_env *newe
 		}
 		fprintf(stderr, "\n");
 	}
+
+	fprintf(stderr, "lockname is %s\n", s->lockname);
+	fprintf(stderr, "filling up em now\n");
 
 	memset(&em, 0, sizeof(em));
 	em.sid = s->id;
@@ -548,8 +540,15 @@ static int exec_internal(struct server *s, const char *cmd, struct tup_env *newe
 	}
 	em.cmdlen = strlen(cmd) + 1;
 	variant = tup_entry_variant(dtent);
+	fprintf(stderr, "variant = %p\n", variant);
 	em.vardictlen = variant->vardict_len;
-	if(master_fork_exec(&em, job, dir, cmd, newenv->envblock, variant->vardict_file, &status) < 0) {
+
+	fprintf(stderr, "before master_fork_exec lockname = %s\n", s->lockname);
+	em.locknamelen = strlen(s->lockname) + 1;
+
+	fprintf(stderr, "em all adjusted, calling master_fork_exec\n");
+
+	if(master_fork_exec(&em, job, dir, cmd, newenv->envblock, variant->vardict_file, s->lockname, &status) < 0) {
 		server_lock(s);
 		fprintf(stderr, "tup error: Unable to fork sub-process.\n");
 		server_unlock(s);

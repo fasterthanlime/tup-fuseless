@@ -49,7 +49,7 @@ struct server {
 	int sd[2];
 
 	// mutex when sending/receiving access events
-	int lockfd;
+	char *lockname;
 
 	// temp variables to read access events
 	char file1[PATH_MAX];

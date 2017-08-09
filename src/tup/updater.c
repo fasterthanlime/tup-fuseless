@@ -1638,13 +1638,7 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 			}
 		}
 		lockname[7] = '/';
-		workers[x].lockfd = openat(tup_top_fd(), lockname, O_RDWR|O_CREAT, 0644);
-		if(workers[x].lockfd < 0) {
-			perror(lockname);
-			return -2;
-		}
-
-		fprintf(stderr, "opened lockfd %d successfully\n", workers[x].lockfd);
+		workers[x].lockname = strdup(lockname);
 
 		if(pthread_mutex_init(&workers[x].lock, NULL) != 0) {
 			perror("pthread_mutex_init");
@@ -1779,8 +1773,6 @@ check_empties:
 	/* Then wait for all the threads to quit */
 	for(x=0; x<jobs; x++) {
 		pthread_join(workers[x].pid, NULL);
-		fprintf(stderr, "closing workers[%d] lockfd %d\n", x, workers[x].lockfd);
-		close(workers[x].lockfd);
 		pthread_cond_destroy(&workers[x].cond);
 		pthread_mutex_destroy(&workers[x].lock);
 	}
@@ -2713,7 +2705,8 @@ static int update(struct node *n, struct worker_thread *wt)
 			cmd = expanded_name;
 	}
 	initialize_server_struct(&s, n->tent);
-	s.lockfd = wt->lockfd;
+	fprintf(stderr, "setting lockname of s to %s\n", wt->lockname);
+	s.lockname = wt->lockname;
 
 	pthread_mutex_unlock(&db_mutex);
 	if(rc < 0)

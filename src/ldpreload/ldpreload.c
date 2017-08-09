@@ -18,9 +18,9 @@ static void handle_file(const char *file, const char *file2, int at);
 static int ignore_file(const char *file);
 
 static int (*s_open)(const char *, int, ...);
-// static int (*s_open64)(const char *, int, ...);
+static int (*s_open64)(const char *, int, ...);
 static FILE *(*s_fopen)(const char *, const char *);
-// static FILE *(*s_fopen64)(const char *, const char *);
+static FILE *(*s_fopen64)(const char *, const char *);
 static FILE *(*s_freopen)(const char *, const char *, FILE *);
 static int (*s_creat)(const char *, mode_t);
 static int (*s_symlink)(const char *, const char *);
@@ -54,7 +54,7 @@ static int (*s_lxstat64)(int vers, const char *path, struct stat64 *buf);
 
 int open(const char *pathname, int flags, ...)
 {
-	fprintf(stdout, "caught open!\n");
+	fprintf(stderr, "[%d] opening %s, flags %x\n", getpid(), pathname, flags);
 
 	int rc;
 	mode_t mode = 0;
@@ -81,32 +81,32 @@ int open(const char *pathname, int flags, ...)
 	return rc;
 }
 
-// int open64(const char *pathname, int flags, ...)
-// {
-// 	int rc;
-// 	mode_t mode = 0;
+int open64(const char *pathname, int flags, ...)
+{
+	int rc;
+	mode_t mode = 0;
 
-// 	WRAP(s_open64, "open64");
-// 	if(flags & O_CREAT) {
-// 		va_list ap;
-// 		va_start(ap, flags);
-// 		mode = va_arg(ap, int);
-// 		va_end(ap);
-// 	}
-// 	rc = s_open64(pathname, flags, mode);
-// 	if(rc >= 0) {
-// 		int at = ACCESS_READ;
+	WRAP(s_open64, "open64");
+	if(flags & O_CREAT) {
+		va_list ap;
+		va_start(ap, flags);
+		mode = va_arg(ap, int);
+		va_end(ap);
+	}
+	rc = s_open64(pathname, flags, mode);
+	if(rc >= 0) {
+		int at = ACCESS_READ;
 
-// 		if(flags&O_WRONLY || flags&O_RDWR)
-// 			at = ACCESS_WRITE;
-// 		handle_file(pathname, "", at);
-// 	} else {
-// 		if(errno == ENOENT || errno == ENOTDIR) {
-// 			// handle_file(pathname, "", ACCESS_GHOST);
-// 		}
-// 	}
-// 	return rc;
-// }
+		if(flags&O_WRONLY || flags&O_RDWR)
+			at = ACCESS_WRITE;
+		handle_file(pathname, "", at);
+	} else {
+		if(errno == ENOENT || errno == ENOTDIR) {
+			// handle_file(pathname, "", ACCESS_GHOST);
+		}
+	}
+	return rc;
+}
 
 FILE *fopen(const char *path, const char *mode)
 {
@@ -124,21 +124,21 @@ FILE *fopen(const char *path, const char *mode)
 	return f;
 }
 
-// FILE *fopen64(const char *path, const char *mode)
-// {
-// 	FILE *f;
+FILE *fopen64(const char *path, const char *mode)
+{
+	FILE *f;
 
-// 	WRAP(s_fopen64, "fopen64");
-// 	f = s_fopen64(path, mode);
-// 	if(f) {
-// 		handle_file(path, "", !(mode[0] == 'r'));
-// 	} else {
-// 		if(errno == ENOENT || errno == ENOTDIR) {
-// 			// handle_file(path, "", ACCESS_GHOST);
-// 		}
-// 	}
-// 	return f;
-// }
+	WRAP(s_fopen64, "fopen64");
+	f = s_fopen64(path, mode);
+	if(f) {
+		handle_file(path, "", !(mode[0] == 'r'));
+	} else {
+		if(errno == ENOENT || errno == ENOTDIR) {
+			// handle_file(path, "", ACCESS_GHOST);
+		}
+	}
+	return f;
+}
 
 FILE *freopen(const char *path, const char *mode, FILE *stream)
 {
@@ -247,6 +247,22 @@ int unlinkat(int dirfd, const char *pathname, int flags)
 int execve(const char *filename, char *const argv[], char *const envp[])
 {
 	int rc;
+
+	fprintf(stderr, "[%d] execve %s\n", getpid(), filename);
+	fprintf(stderr, "[%d] execve args:\n", getpid());
+	char **cur = argv;
+	while (*cur) {
+		fprintf(stderr, "%s\n", *cur);
+		cur++;
+	}
+	fprintf(stderr, "[%d] execve env:\n", getpid());
+
+	cur = envp;
+	while (*cur) {
+		fprintf(stderr, "%s\n", *cur);
+		cur++;
+	}
+	fprintf(stderr, "[%d] execve going for it!\n", getpid());
 
 	WRAP(s_execve, "execve");
 	handle_file(filename, "", ACCESS_READ);
@@ -400,8 +416,8 @@ static void handle_file(const char *file, const char *file2, int at)
 	if(ignore_file(file))
 		return;
 
-	fprintf(stderr, "handling file %s, access %d", file, at);
-	tup_send_event(file, strlen(file), file2, strlen(file2), at);
+	fprintf(stderr, "handling file %s, access %d\n", file, at);
+	// tup_send_event(file, strlen(file), file2, strlen(file2), at);
 }
 
 static int ignore_file(const char *file)
@@ -413,14 +429,32 @@ static int ignore_file(const char *file)
 	return 0;
 }
 
-extern char **environ;
-
 __attribute__((constructor)) void init(void) {
-	fprintf(stdout, "injected!\n");
+	pid_t pid = getpid();
+	char arg[65536];
+	snprintf(arg, sizeof(arg), "/proc/%d/cmdline", pid);
 
-	char **env = environ;
-	while (*env) {
-		printf("%s\n", *env++);
+	char buf[65536];
+	int read_bytes = 0;
+
+	WRAP(s_open, "open");
+	int cmdfd = s_open(arg, O_RDONLY);
+
+	fprintf(stderr, "---------------------------------");
+	fprintf(stderr, "injected into pid %d! cmdline = ", pid);
+	while ((read_bytes = read(cmdfd, buf, sizeof(buf))) > 0) {
+		for (int i = 0; i < read_bytes; i++) {
+			if (buf[i] == '\0') {
+				buf[i] = ' ';
+			}
+		}
+		buf[read_bytes] = '\0';
+		fprintf(stderr, "%s", buf);
 	}
+
+	fprintf(stderr, "\n");
+	fprintf(stderr, "------------- that was our command line\n");
+
+	close(cmdfd);
 	return 0;
 }
