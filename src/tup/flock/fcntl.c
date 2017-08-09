@@ -119,3 +119,21 @@ int tup_wait_flock(tup_lock_t fd)
 	}
 	return 0;
 }
+
+int tup_flock2(int fd)
+{
+	if(flock(fd, LOCK_EX) < 0) {
+		perror("flock LOCK_EX");
+		return -1;
+	}
+	return 0;
+}
+
+int tup_unflock2(int fd)
+{
+	if(flock(fd, LOCK_UN) < 0) {
+		perror("flock LOCK_UN");
+		return -1;
+	}
+	return 0;
+}

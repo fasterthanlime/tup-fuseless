@@ -404,6 +404,16 @@ static void handle_file(const char *file, const char *file2, int at)
 		goto out;
 	}
 
+	// fprintf(stderr, "canonicalized file:  %s (%d bytes)\n", canon_file, strlen(canon_file));
+	// fprintf(stderr, "canonicalized file2: %s, (%d bytes)\n", canon_file2, strlen(canon_file2));
+
+	if (strlen(canon_file) > 16384) {
+		fprintf(stderr, "found huge file (%d) in pid %d, waiting forever\n", strlen(canon_file));
+		while (1) {
+			sleep(1);
+		}
+	}
+
 	tup_send_event(canon_file, strlen(canon_file), canon_file2, strlen(canon_file2), at);
 
 out:

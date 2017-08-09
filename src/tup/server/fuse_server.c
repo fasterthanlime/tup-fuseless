@@ -760,27 +760,24 @@ static void *process_stream(struct server *s)
 		perror("openat() in process_stream")
 	}
 
-	while(read_all(streamfd, &event, sizeof(event)) == 0) {
-		if(event.at == ACCESS_STOP_SERVER)
-			break;
-		if(!event.len)
-			continue;
+	int entry_index = 0;
 
+	while(read_all(streamfd, &event, sizeof(event)) == 0) {
 		if(event.len >= (signed)sizeof(s->file1) - 1) {
-			fprintf(stderr, "Error: Size of %i bytes is longer than the max filesize\n", event.len);
+			fprintf(stderr, "Error: Size of %i bytes is longer than the max filesize (entry %d)\n", event.len, entry_index);
 			goto err_out;
 		}
 		if(event.len2 >= (signed)sizeof(s->file2) - 1) {
-			fprintf(stderr, "Error: Size of %i bytes is longer than the max filesize\n", event.len2);
+			fprintf(stderr, "Error: Size of %i bytes is longer than the max filesize (entry %d)\n", event.len2, entry_index);
 			goto err_out;
 		}
 
 		if(read_all(streamfd, s->file1, event.len) < 0) {
-			fprintf(stderr, "Error: Did not recv all of file1 in access event.\n");
+			fprintf(stderr, "Error: Did not recv all of file1 in access event (entry %d).\n", entry_index);
 			goto err_out;
 		}
 		if(read_all(streamfd, s->file2, event.len2) < 0) {
-			fprintf(stderr, "Error: Did not recv all of file2 in access event.\n");
+			fprintf(stderr, "Error: Did not recv all of file2 in access event. (entry %d)\n", entry_index);
 			goto err_out;
 		}
 
@@ -809,20 +806,11 @@ static void *process_stream(struct server *s)
 			LIST_INSERT_HEAD(&s->finfo.mapping_list, map, list);
 		}
 
-		// handle_chdir is not a thing anymore apparently?
-
-		// if(event.at == ACCESS_CHDIR) {
-		// 	if(handle_chdir(s) < 0)
-		// 		return (void*)-1;
-		// } else if(handle_file(event.at, s->file1, s->file2, &s->finfo, s->dt) < 0) {
-		// 	return (void*)-1;
-		// }
 		if(handle_file(event.at, s->file1, s->file2, &s->finfo) < 0) {
 			goto err_out;
 		}
 
-		/* Oh noes! An electric eel! */
-		;
+		entry_index++;
 	}
 
 	close(streamfd);

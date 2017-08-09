@@ -31,4 +31,7 @@ int tup_try_flock(tup_lock_t fd); /* Returns: -1 error, 0 got lock, 1 would bloc
 int tup_unflock(tup_lock_t fd);
 int tup_wait_flock(tup_lock_t fd);
 
+int tup_flock2(tup_lock_t fd);
+int tup_unflock2(tup_lock_t fd);
+
 #endif

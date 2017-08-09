@@ -79,7 +79,7 @@ void tup_send_event(const char *file, int len, const char *file2, int len2, int 
 		}
 	}
 
-	if(tup_flock(lockfd) < 0) {
+	if(tup_flock2(lockfd) < 0) {
 		exit(1);
 	}
 	event.at = at;
@@ -91,7 +91,7 @@ void tup_send_event(const char *file, int len, const char *file2, int len2, int 
 		exit(1);
 	if(write_all(tupsd, file2, event.len2) < 0)
 		exit(1);
-	if(tup_unflock(lockfd) < 0)
+	if(tup_unflock2(lockfd) < 0)
 		exit(1);
 	pthread_mutex_unlock(&mutex);
 }
@@ -103,6 +103,9 @@ static int write_all(int sd, const void *buf, size_t len)
 
 	while(sent < len) {
 		int rc;
+		int position = lseek(sd, 0, SEEK_CUR);
+		fprintf(stderr, "fd=%d:{%d-%d}\n", sd, position, position+len);
+
 		rc = write(sd, cur + sent, len - sent);
 		if(rc < 0) {
 			perror("write");
