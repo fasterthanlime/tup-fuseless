@@ -83,6 +83,7 @@ int tup_lock_init(void)
 {
 	int ret;
 
+	fprintf(stderr, "[%d][init] flocking shared lock %s\n", getpid(), TUP_SHARED_LOCK);
 	if(tup_lock_open(TUP_SHARED_LOCK, &sh_lock) < 0)
 		return -1;
 	ret = tup_try_flock(sh_lock);
@@ -94,11 +95,13 @@ int tup_lock_init(void)
 		return -1;
 	}
 
+	fprintf(stderr, "[%d][init] flocking object lock %s\n", getpid(), TUP_OBJECT_LOCK);
 	if(tup_lock_open(TUP_OBJECT_LOCK, &obj_lock) < 0)
 		return -1;
 	if(tup_flock(obj_lock) < 0)
 		return -1;
 
+	fprintf(stderr, "[%d][init] opening tri lock %s\n", getpid(), TUP_TRI_LOCK);
 	if(tup_lock_open(TUP_TRI_LOCK, &tri_lock) < 0)
 		return -1;
 	return 0;
@@ -106,12 +109,16 @@ int tup_lock_init(void)
 
 void tup_lock_exit(void)
 {
+	fprintf(stderr, "[%d][exit] unflocking shared lock\n", getpid());
 	tup_unflock(obj_lock);
 	tup_lock_close(obj_lock);
+	fprintf(stderr, "[%d][exit] flocking tri lock\n", getpid());
 	/* Wait for the monitor to pick up the object lock */
 	tup_flock(tri_lock);
+	fprintf(stderr, "[%d][exit] unflocking tri lock\n", getpid());
 	tup_unflock(tri_lock);
 	tup_lock_close(tri_lock);
+	fprintf(stderr, "[%d][exit] unflocking shared lock\n", getpid());
 	tup_unflock(sh_lock);
 	tup_lock_close(sh_lock);
 }

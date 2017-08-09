@@ -35,7 +35,7 @@ int pel_ignored(const char *path, int len)
 		return 1;
 	if(len == 2 && strncmp(path, "..", 2) == 0)
 		return 1;
-	if(len == 4 && strncmp(path, ".tup", 4) == 0)
+	if(len >= 4 && strncmp(path, ".tup", 4) == 0)
 		return 1;
 	if(len == 4 && strncmp(path, ".git", 4) == 0)
 		return 1;
