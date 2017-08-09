@@ -56,8 +56,6 @@ static int (*s_lxstat64)(int vers, const char *path, struct stat64 *buf);
 
 int open(const char *pathname, int flags, ...)
 {
-	fprintf(stderr, "[%d] opening %s, flags %x\n", getpid(), pathname, flags);
-
 	int rc;
 	mode_t mode = 0;
 
@@ -250,22 +248,6 @@ int execve(const char *filename, char *const argv[], char *const envp[])
 {
 	int rc;
 
-	fprintf(stderr, "[%d] execve %s\n", getpid(), filename);
-	fprintf(stderr, "[%d] execve args:\n", getpid());
-	char **cur = argv;
-	while (*cur) {
-		fprintf(stderr, "%s\n", *cur);
-		cur++;
-	}
-	fprintf(stderr, "[%d] execve env:\n", getpid());
-
-	cur = envp;
-	while (*cur) {
-		fprintf(stderr, "%s\n", *cur);
-		cur++;
-	}
-	fprintf(stderr, "[%d] execve going for it!\n", getpid());
-
 	WRAP(s_execve, "execve");
 	handle_file(filename, "", ACCESS_READ);
 	rc = s_execve(filename, argv, envp);
@@ -422,7 +404,6 @@ static void handle_file(const char *file, const char *file2, int at)
 		goto out;
 	}
 
-	// fprintf(stderr, "handling file %s, access %d\n", canon_file, at);
 	tup_send_event(canon_file, strlen(canon_file), canon_file2, strlen(canon_file2), at);
 
 out:
@@ -512,6 +493,7 @@ static int ignore_file(const char *file)
 }
 
 __attribute__((constructor)) void init(void) {
+#if 0
 	pid_t pid = getpid();
 	char arg[65536];
 	snprintf(arg, sizeof(arg), "/proc/%d/cmdline", pid);
@@ -538,5 +520,6 @@ __attribute__((constructor)) void init(void) {
 	fprintf(stderr, "------------- that was our command line\n");
 
 	close(cmdfd);
+#endif
 	return 0;
 }

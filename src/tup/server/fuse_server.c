@@ -486,11 +486,8 @@ static int exec_internal(struct server *s, const char *cmd, struct tup_env *newe
 	}
 	em.cmdlen = strlen(cmd) + 1;
 	variant = tup_entry_variant(dtent);
-	fprintf(stderr, "variant = %p\n", variant);
 	em.vardictlen = variant->vardict_len;
 
-	fprintf(stderr, "before master_fork_exec lockname   = %s\n", s->lockname);
-	fprintf(stderr, "before master_fork_exec streamname = %s\n", s->streamname);
 	em.locknamelen = strlen(s->lockname) + 1;
 	em.streamnamelen = strlen(s->streamname) + 1;
 

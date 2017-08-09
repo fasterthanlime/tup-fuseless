@@ -642,7 +642,6 @@ static int master_fork_loop(void)
 
 		// we need to allocate the lockfd right here - so that it's
 		// inherited by the child process
-		fprintf(stderr, "get_tup_top = %s\n", get_tup_top());
 		int tup_fd = open(get_tup_top(), O_RDONLY);
 		if (tup_fd < 0) {
 			perror("open(get_tup_top)");
@@ -654,14 +653,12 @@ static int master_fork_loop(void)
 			perror("openat(lockfd)");
 			exit(1);
 		}
-		fprintf(stderr, "opened lockfd %d successfully\n", lockfd);
 
 		int streamfd = openat(tup_fd, streamname, O_WRONLY|O_CREAT|O_TRUNC|O_APPEND, 0644);
 		if(streamfd < 0) {
 			perror("openat(streamfd)");
 			exit(1);
 		}
-		fprintf(stderr, "opened streamfd %d successfully\n", streamfd);
 
 		close(tup_fd);
 
@@ -671,8 +668,6 @@ static int master_fork_loop(void)
 			exit(1);
 		}
 		if(pid == 0) {
-			fprintf(stderr, "tup: master_fork worker process pid = %d\n", getpid());
-
 			char **envp;
 			char **curp;
 			char *curenv;
@@ -834,9 +829,7 @@ static void *child_waiter(void *arg)
 			fprintf(stderr, "tup error: Unable to write return status value to the socket. Subprocess pid=%i may not exit properly.\n", waiter->pid);
 		}
 
-		fprintf(stderr, "tup: closing lockfd %d for child %d\n", waiter->lockfd, pid);
 		close(waiter->lockfd);
-		fprintf(stderr, "tup: closing streamfd %d for child %d\n", waiter->streamfd, pid);
 		close(waiter->streamfd);
 
 		free(waiter);

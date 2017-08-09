@@ -119,7 +119,9 @@ tupid_t tup_file_mod_mtime(tupid_t dt, const char *file, time_t mtime,
 		if(ignore_generated && tent->type == TUP_NODE_GENERATED)
 			force = 0;
 		if(tent->mtime != mtime || force) {
+#if 0
 			fprintf(stderr, "tent->mtime = %d, mtime = %d\n", tent->mtime, mtime);
+#endif
 			changed = 1;
 		}
 
