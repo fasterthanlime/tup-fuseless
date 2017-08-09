@@ -24,7 +24,7 @@ all:
 		src/compat/*.o \
 		src/sqlite3/*.o \
 		src/lua/*.a \
-		-o tup $(shell pkg-config fuse --libs) -lm -lpthread -ldl
+		-o tup $(shell pkg-config fuse --libs) -lm -lpthread
 
 clean:
 	rm $(shell find ./ -name '*.[oa]')

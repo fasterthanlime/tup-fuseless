@@ -53,6 +53,7 @@ struct child_wait_info {
 	char dev[JOB_MAX];
 	char proc[JOB_MAX];
 	int lockfd;
+	int streamfd;
 };
 
 struct status_tree {
@@ -220,7 +221,7 @@ int server_pre_init(void)
 int server_post_exit(void)
 {
 	int status;
-	struct execmsg em = {-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	struct execmsg em = {-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 	if(!inited)
 		return 0;
@@ -262,7 +263,7 @@ static int write_all(const void *data, int size)
 
 int master_fork_exec(struct execmsg *em, const char *job, const char *dir,
 		     const char *cmd, const char *envstring,
-		     const char *vardict_file, const char *lockname, int *status)
+		     const char *vardict_file, const char *lockname, const char *streamname, int *status)
 {
 	static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 	struct status_tree st;
@@ -283,8 +284,6 @@ int master_fork_exec(struct execmsg *em, const char *job, const char *dir,
 	}
 	pthread_mutex_unlock(&statuslock);
 
-	fprintf(stderr, "writing all of em\n");
-
 	pthread_mutex_lock(&lock);
 	if(write_all(em, sizeof(*em)) < 0)
 		goto err_out;
@@ -300,8 +299,9 @@ int master_fork_exec(struct execmsg *em, const char *job, const char *dir,
 		goto err_out;
 	if(write_all(lockname, em->locknamelen) < 0)
 		goto err_out;
+	if(write_all(streamname, em->streamnamelen) < 0)
+		goto err_out;
 	pthread_mutex_unlock(&lock);
-	fprintf(stderr, "woo we wrote all of em\n");
 
 	*status = wait_for_my_sid(&st);
 	return 0;
@@ -510,6 +510,7 @@ static int master_fork_loop(void)
 	char dir[PATH_MAX];
 	char vardict_file[PATH_MAX];
 	char lockname[PATH_MAX];
+	char streamname[PATH_MAX];
 	char *cmd;
 	char *env;
 	int cmdsize = 4096;
@@ -622,6 +623,8 @@ static int master_fork_loop(void)
 			return -1;
 		if(read_all(msd[0], lockname, em.locknamelen) < 0)
 			return -1;
+		if(read_all(msd[0], streamname, em.streamnamelen) < 0)
+			return -1;
 
 		waiter = malloc(sizeof *waiter);
 		if(!waiter) {
@@ -651,10 +654,16 @@ static int master_fork_loop(void)
 			perror("openat(lockfd)");
 			exit(1);
 		}
+		fprintf(stderr, "opened lockfd %d successfully\n", lockfd);
+
+		int streamfd = openat(tup_fd, streamname, O_WRONLY|O_CREAT|O_TRUNC|O_APPEND, 0644);
+		if(streamfd < 0) {
+			perror("openat(streamfd)");
+			exit(1);
+		}
+		fprintf(stderr, "opened streamfd %d successfully\n", streamfd);
 
 		close(tup_fd);
-
-		fprintf(stderr, "opened lockfd %d successfully\n", lockfd);
 
 		pid = fork();
 		if(pid < 0) {
@@ -680,7 +689,7 @@ static int master_fork_loop(void)
 			}
 
 			/* +1 for the vardict variable, +1 for the lockfd,
-			 * and +1 for the terminating NULL pointer.
+			 * +1 for streamfd, and +1 for the terminating NULL pointer.
 			 */
 			envp = malloc((em.num_env_entries + 3) * sizeof(*envp));
 			if(!envp) {
@@ -688,10 +697,15 @@ static int master_fork_loop(void)
 				exit(1);
 			}
 
-			int lockname_len = snprintf(NULL, 0, "%s=%i", TUP_LOCK_NAME, lockfd);
 			// FIXME: this leaks memory
+			int lockname_len = snprintf(NULL, 0, "%s=%i", TUP_LOCK_NAME, lockfd);
 			char *lockname = malloc(lockname_len + 1);
 			snprintf(lockname, lockname_len+1, "%s=%i", TUP_LOCK_NAME, lockfd) + 1;
+
+			// FIXME: this leaks memory
+			int streamname_len = snprintf(NULL, 0, "%s=%i", TUP_SERVER_NAME, streamfd);
+			char *streamname = malloc(streamname_len + 1);
+			snprintf(streamname, streamname_len+1, "%s=%i", TUP_SERVER_NAME, streamfd) + 1;
 
 			/* Convert from Windows-style environment to
 			 * Linux-style.
@@ -706,6 +720,8 @@ static int master_fork_loop(void)
 			*curp = full_vardict_file;
 			curp++;
 			*curp = lockname;
+			curp++;
+			*curp = streamname;
 			curp++;
 			*curp = NULL;
 
@@ -725,6 +741,7 @@ static int master_fork_loop(void)
 		waiter->sid = em.sid;
 		waiter->tnode.id = pid;
 		waiter->lockfd = lockfd;
+		waiter->streamfd = streamfd;
 		if(thread_tree_insert(&child_waiter_root, &waiter->tnode) < 0) {
 			fprintf(stderr, "tup internal error: unable to insert pid %i into the thread tree.\n", pid);
 			exit(1);
@@ -819,6 +836,8 @@ static void *child_waiter(void *arg)
 
 		fprintf(stderr, "tup: closing lockfd %d for child %d\n", waiter->lockfd, pid);
 		close(waiter->lockfd);
+		fprintf(stderr, "tup: closing streamfd %d for child %d\n", waiter->streamfd, pid);
+		close(waiter->streamfd);
 
 		free(waiter);
 	}

@@ -121,6 +121,7 @@ struct worker_thread {
 	pthread_t pid;
 	int lockfd; /* lock fd for .tup/jobXXXX/.tuplock */
 	char *lockname;
+	char *streamname;
 	struct graph *g; /* Not for update_work() since it isn't sync'd */
 	worker_function fn;
 
@@ -1640,6 +1641,9 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 		lockname[7] = '/';
 		workers[x].lockname = strdup(lockname);
 
+		memcpy(lockname+12, "strm", 4);
+		workers[x].streamname = strdup(lockname);
+
 		if(pthread_mutex_init(&workers[x].lock, NULL) != 0) {
 			perror("pthread_mutex_init");
 			return -2;
@@ -2705,8 +2709,8 @@ static int update(struct node *n, struct worker_thread *wt)
 			cmd = expanded_name;
 	}
 	initialize_server_struct(&s, n->tent);
-	fprintf(stderr, "setting lockname of s to %s\n", wt->lockname);
 	s.lockname = wt->lockname;
+	s.streamname = wt->streamname;
 
 	pthread_mutex_unlock(&db_mutex);
 	if(rc < 0)

@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <dlfcn.h>
 #include <errno.h>
+#include <limits.h>
 
 #if defined(__APPLE__)
 #include <sys/stat.h>
@@ -16,6 +17,7 @@
 
 static void handle_file(const char *file, const char *file2, int at);
 static int ignore_file(const char *file);
+char *normalize_path(const char *src);
 
 static int (*s_open)(const char *, int, ...);
 static int (*s_open64)(const char *, int, ...);
@@ -413,11 +415,91 @@ int __lxstat64(int vers, const char *path, struct stat64 *buf)
 
 static void handle_file(const char *file, const char *file2, int at)
 {
-	if(ignore_file(file))
-		return;
+	char *canon_file = normalize_path(file);
+	char *canon_file2 = normalize_path(file2);
 
-	fprintf(stderr, "handling file %s, access %d\n", file, at);
-	tup_send_event(file, strlen(file), file2, strlen(file2), at);
+	if(ignore_file(canon_file)) {
+		goto out;
+	}
+
+	// fprintf(stderr, "handling file %s, access %d\n", canon_file, at);
+	tup_send_event(canon_file, strlen(canon_file), canon_file2, strlen(canon_file2), at);
+
+out:
+	free(canon_file);
+	free(canon_file2);
+}
+
+char *normalize_path(const char *src)
+{
+	size_t src_len = strlen(src);
+	char *res;
+	size_t res_len;
+
+	const char *ptr = src;
+	const char *end = &src[src_len];
+	const char *next;
+
+	if (src_len == 0 || src[0] != '/')
+	{
+		// relative path
+		char pwd[PATH_MAX];
+		size_t pwd_len;
+
+		if (getcwd(pwd, sizeof(pwd)) == NULL)
+		{
+			return NULL;
+		}
+
+		pwd_len = strlen(pwd);
+		res = malloc(pwd_len + 1 + src_len + 1);
+		memcpy(res, pwd, pwd_len);
+		res_len = pwd_len;
+	}
+	else
+	{
+		res = malloc((src_len > 0 ? src_len : 1) + 1);
+		res_len = 0;
+	}
+
+	for (ptr = src; ptr < end; ptr = next + 1)
+	{
+		size_t len;
+		next = memchr(ptr, '/', end - ptr);
+		if (next == NULL)
+		{
+			next = end;
+		}
+		len = next - ptr;
+		switch (len)
+		{
+		case 2:
+			if (ptr[0] == '.' && ptr[1] == '.')
+			{
+				const char *slash = memrchr(res, '/', res_len);
+				if (slash != NULL)
+				{
+					res_len = slash - res;
+				}
+				continue;
+			}
+			break;
+		case 1:
+			if (ptr[0] == '.')
+			{
+				continue;
+			}
+			break;
+		case 0:
+			continue;
+		}
+		res[res_len++] = '/';
+		memcpy(&res[res_len], ptr, len);
+		res_len += len;
+	}
+
+	res[res_len] = '\0';
+	return res;
 }
 
 static int ignore_file(const char *file)

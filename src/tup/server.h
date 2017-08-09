@@ -45,10 +45,10 @@ struct server {
 	// socket stuff
 	//////////////////////////
 
-	// socket pair
-	int sd[2];
+	// access event stream
+	char *streamname;
 
-	// mutex when sending/receiving access events
+	// access event stream mutex
 	char *lockname;
 
 	// temp variables to read access events

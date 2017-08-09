@@ -52,8 +52,9 @@
 #define TUP_MNT ".tup/mnt"
 
 static void sighandler(int sig);
-static void *message_thread(void *arg);
-static int recvall(int sd, void *buf, size_t len);
+static void *process_stream(struct server *s);
+#define read_all(a, b, c) read_all_internal(a, b, c, __LINE__)
+static int read_all_internal(int sd, void *dest, int size, int line);
 
 static struct sigaction sigact = {
 	.sa_handler = sighandler,
@@ -447,7 +448,7 @@ static int finfo_wait_open_count(struct server *s)
 	return 0;
 }
 
-static int exec_internal(struct server *s, const char *cmd, struct tup_env *newenv_in,
+static int exec_internal(struct server *s, const char *cmd, struct tup_env *newenv,
 			 struct tup_entry *dtent, int single_output, int need_namespacing,
 			 int run_in_bash)
 {
@@ -457,61 +458,6 @@ static int exec_internal(struct server *s, const char *cmd, struct tup_env *newe
 	char dir[PATH_MAX];
 	struct execmsg em;
 	struct variant *variant;
-
-	if(socketpair(AF_UNIX, SOCK_STREAM, 0, s->sd) < 0) {
-		perror("socketpair");
-		return -1;
-	}
-
-	fprintf(stderr, "socket pair: %d, %d\n", s->sd[0], s->sd[1]);
-
-	if(pthread_create(&s->tid, NULL, message_thread, s) < 0) {
-		perror("pthread_create");
-		close(s->sd[0]);
-		close(s->sd[1]);
-		return -1;
-	}
-
-	struct tup_env *newenv = malloc(sizeof(struct tup_env));
-	if (!newenv) {
-		perror("malloc(newenv)");
-		return -1;
-	}
-
-	newenv->num_entries = newenv_in->num_entries;
-	newenv->block_size = newenv_in->block_size;
-
-	int servname_len = snprintf(NULL, 0, "%s=%i", TUP_SERVER_NAME, s->sd[1]);
-	newenv->num_entries++;
-	newenv->block_size += servname_len + 1;
-
-	newenv->envblock = malloc(newenv->block_size);
-	if (!newenv->envblock) {
-		perror("malloc(newenv->envblock)");
-		return -1;
-	}
-
-	memcpy(newenv->envblock, newenv_in->envblock, newenv_in->block_size);
-	// before the second '\0'
-	char *cur = newenv->envblock + newenv_in->block_size - 1;
-	cur += snprintf(cur, servname_len+1, "%s=%i", TUP_SERVER_NAME, s->sd[1]) + 1;
-	*cur = '\0';
-
-	{
-		fprintf(stderr, "full newenv: ");
-		int i;
-		for (i = 0; i < newenv->block_size; i++) {
-			if (newenv->envblock[i] == '\0') {
-				fprintf(stderr, "((NULL))");
-			} else {
-				fprintf(stderr, "%c", newenv->envblock[i]);
-			}
-		}
-		fprintf(stderr, "\n");
-	}
-
-	fprintf(stderr, "lockname is %s\n", s->lockname);
-	fprintf(stderr, "filling up em now\n");
 
 	memset(&em, 0, sizeof(em));
 	em.sid = s->id;
@@ -543,12 +489,12 @@ static int exec_internal(struct server *s, const char *cmd, struct tup_env *newe
 	fprintf(stderr, "variant = %p\n", variant);
 	em.vardictlen = variant->vardict_len;
 
-	fprintf(stderr, "before master_fork_exec lockname = %s\n", s->lockname);
+	fprintf(stderr, "before master_fork_exec lockname   = %s\n", s->lockname);
+	fprintf(stderr, "before master_fork_exec streamname = %s\n", s->streamname);
 	em.locknamelen = strlen(s->lockname) + 1;
+	em.streamnamelen = strlen(s->streamname) + 1;
 
-	fprintf(stderr, "em all adjusted, calling master_fork_exec\n");
-
-	if(master_fork_exec(&em, job, dir, cmd, newenv->envblock, variant->vardict_file, s->lockname, &status) < 0) {
+	if(master_fork_exec(&em, job, dir, cmd, newenv->envblock, variant->vardict_file, s->lockname, s->streamname, &status) < 0) {
 		server_lock(s);
 		fprintf(stderr, "tup error: Unable to fork sub-process.\n");
 		server_unlock(s);
@@ -558,30 +504,7 @@ static int exec_internal(struct server *s, const char *cmd, struct tup_env *newe
 	if(finfo_wait_open_count(s) < 0)
 		return -1;
 
-	// stop the server
-	{
-		void *retval = NULL;
-		struct access_event e;
-		int rc;
-
-		memset(&e, 0, sizeof(e));
-		e.at = ACCESS_STOP_SERVER;
-
-		rc = send(s->sd[1], &e, sizeof(e), 0);
-		if (rc != sizeof(e)) {
-			perror("send");
-			return -1;
-		}
-		pthread_join(s->tid, &retval);
-		close(s->sd[0]);
-		close(s->sd[1]);
-
-		if (retval != NULL) {
-			fprintf(stderr, "tup error: message_thread retval = %p\n", retval);
-			return -1;
-		}
-	}
-
+	process_stream(s);
 
 	snprintf(buf, sizeof(buf), ".tup/tmp/output-%i", s->id);
 	buf[sizeof(buf)-1] = 0;
@@ -831,12 +754,16 @@ static void sighandler(int sig)
 	}
 }
 
-static void *message_thread(void *arg)
+static void *process_stream(struct server *s)
 {
 	struct access_event event;
-	struct server *s = arg;
 
-	while(recvall(s->sd[0], &event, sizeof(event)) == 0) {
+	int streamfd = openat(tup_top_fd(), s->streamname, O_RDONLY);
+	if (streamfd < 0) {
+		perror("openat() in process_stream")
+	}
+
+	while(read_all(streamfd, &event, sizeof(event)) == 0) {
 		if(event.at == ACCESS_STOP_SERVER)
 			break;
 		if(!event.len)
@@ -844,24 +771,46 @@ static void *message_thread(void *arg)
 
 		if(event.len >= (signed)sizeof(s->file1) - 1) {
 			fprintf(stderr, "Error: Size of %i bytes is longer than the max filesize\n", event.len);
-			return (void*)-1;
+			goto err_out;
 		}
 		if(event.len2 >= (signed)sizeof(s->file2) - 1) {
 			fprintf(stderr, "Error: Size of %i bytes is longer than the max filesize\n", event.len2);
-			return (void*)-1;
+			goto err_out;
 		}
 
-		if(recvall(s->sd[0], s->file1, event.len) < 0) {
+		if(read_all(streamfd, s->file1, event.len) < 0) {
 			fprintf(stderr, "Error: Did not recv all of file1 in access event.\n");
-			return (void*)-1;
+			goto err_out;
 		}
-		if(recvall(s->sd[0], s->file2, event.len2) < 0) {
+		if(read_all(streamfd, s->file2, event.len2) < 0) {
 			fprintf(stderr, "Error: Did not recv all of file2 in access event.\n");
-			return (void*)-1;
+			goto err_out;
 		}
 
 		s->file1[event.len] = 0;
 		s->file2[event.len2] = 0;
+
+		if (event.at == ACCESS_WRITE) {
+			struct mapping *map;
+
+			map = malloc(sizeof *map);
+			if(!map) {
+				perror("malloc");
+				return -1;
+			}
+			map->realname = strdup(s->file1);
+			if(!map->realname) {
+				perror("strdup");
+				return -1;
+			}
+			map->tmpname = strdup(s->file1);
+			if(!map->tmpname) {
+				perror("strdup");
+				return -1;
+			}
+			map->tent = NULL; /* This is used when saving deps */
+			LIST_INSERT_HEAD(&s->finfo.mapping_list, map, list);
+		}
 
 		// handle_chdir is not a thing anymore apparently?
 
@@ -872,30 +821,39 @@ static void *message_thread(void *arg)
 		// 	return (void*)-1;
 		// }
 		if(handle_file(event.at, s->file1, s->file2, &s->finfo) < 0) {
-			return (void*)-1;
+			goto err_out;
 		}
 
 		/* Oh noes! An electric eel! */
 		;
 	}
-	return NULL;
+
+	close(streamfd);
+	return 0;
+
+err_out:
+	close(streamfd);
+  return -1;
 }
 
-static int recvall(int sd, void *buf, size_t len)
+static int read_all_internal(int sd, void *dest, int size, int line)
 {
-	size_t recvd = 0;
-	char *cur = buf;
+	int rc;
+	int bytes_read = 0;
+	char *p = dest;
 
-	while(recvd < len) {
-		int rc;
-		rc = recv(sd, cur + recvd, len - recvd, 0);
+	while(bytes_read < size) {
+		rc = read(sd, p + bytes_read, size - bytes_read);
 		if(rc < 0) {
-			perror("recv");
+			perror("read");
+			fprintf(stderr, "tup error: Unable to read from the fuse_server stream file (read_all called from line %i).\n", line);
 			return -1;
 		}
-		if(rc == 0)
+		if(rc == 0) {
+			DEBUGP("tup error: Expected to read %i bytes, but the fuse_server stream file ended after %i bytes (read_all called from line %i).\n", size, bytes_read, line);
 			return -1;
-		recvd += rc;
+		}
+		bytes_read += rc;
 	}
 	return 0;
 }

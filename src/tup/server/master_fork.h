@@ -34,6 +34,7 @@ struct execmsg {
 	int envlen;
 	int vardictlen;
 	int locknamelen;
+	int streamnamelen;
 	int num_env_entries;
 	int single_output;
 	int need_namespacing;
@@ -44,6 +45,6 @@ struct execmsg {
 
 int master_fork_exec(struct execmsg *em, const char *job, const char *dir,
 		     const char *cmd, const char *newenv,
-		     const char *vardict_file, const char *lockname, int *status);
+		     const char *vardict_file, const char *lockname, const char *streamname, int *status);
 
 #endif

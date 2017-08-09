@@ -28,19 +28,7 @@
 #include <sys/socket.h>
 #include <dlfcn.h>
 
-static int (*s_open)(const char *, int, ...);
-
-#define WRAP(ptr, name) \
-	if(!ptr) { \
-		ptr = dlsym(RTLD_NEXT, name); \
-		if(!ptr) { \
-			fprintf(stderr, "tup.ldpreload: Unable to wrap '%s'\n", \
-				name); \
-			exit(1); \
-		} \
-	}
-
-static int sendall(int sd, const void *buf, size_t len);
+static int write_all(int sd, const void *buf, size_t len);
 
 void tup_send_event(const char *file, int len, const char *file2, int len2, int at)
 {
@@ -84,8 +72,7 @@ void tup_send_event(const char *file, int len, const char *file2, int len2, int 
 			exit(1);
 		}
 
-		WRAP(s_open, "open")
-		tupsd = s_open(path, O_WRONLY|O_APPEND);
+		tupsd = strtol(path, NULL, 0);
 		if(tupsd <= 0) {
 			fprintf(stderr, "tup: Unable to get valid socket descriptor.\n");
 			exit(1);
@@ -98,18 +85,18 @@ void tup_send_event(const char *file, int len, const char *file2, int len2, int 
 	event.at = at;
 	event.len = len;
 	event.len2 = len2;
-	if(sendall(tupsd, &event, sizeof(event)) < 0)
+	if(write_all(tupsd, &event, sizeof(event)) < 0)
 		exit(1);
-	if(sendall(tupsd, file, event.len) < 0)
+	if(write_all(tupsd, file, event.len) < 0)
 		exit(1);
-	if(sendall(tupsd, file2, event.len2) < 0)
+	if(write_all(tupsd, file2, event.len2) < 0)
 		exit(1);
 	if(tup_unflock(lockfd) < 0)
 		exit(1);
 	pthread_mutex_unlock(&mutex);
 }
 
-static int sendall(int sd, const void *buf, size_t len)
+static int write_all(int sd, const void *buf, size_t len)
 {
 	size_t sent = 0;
 	const char *cur = buf;
