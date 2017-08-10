@@ -26,6 +26,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <sys/stat.h>
+
 /* So...the tri-lock business. There are three locks. They lock one thing - the
  * database. It also lets the monitor ignore the file accesses while an update
  * happens. I think they may actually all be necessary. Here's how it works,
@@ -79,6 +81,18 @@ static tup_lock_t sh_lock;
 static tup_lock_t obj_lock;
 static tup_lock_t tri_lock;
 
+// fork note: this works around lack of inotify events
+static tup_lock_t obj_lock_close;
+
+static int touch(int fd)
+{
+	struct timespec times[2];
+	memset(times, 0, sizeof(times));
+	times[0].tv_nsec = UTIME_NOW;
+	times[1].tv_nsec = UTIME_NOW;
+	return futimens(fd, times);
+}
+
 int tup_lock_init(void)
 {
 	int ret;
@@ -102,6 +116,16 @@ int tup_lock_init(void)
 	CLOG("open object");
 	if(tup_lock_open(TUP_OBJECT_LOCK, &obj_lock) < 0)
 		return -1;
+
+	CLOG("touch object");
+	if (touch(obj_lock) < 0) {
+		perror("touch(obj_lock)");
+		return -1;
+	}
+
+	if(tup_lock_open(TUP_OBJECT_LOCK_CLOSE, &obj_lock_close) < 0)
+		return -1;
+
 	CLOG("<-- object...");
 	if(tup_flock(obj_lock) < 0)
 		return -1;
@@ -118,9 +142,13 @@ int tup_lock_init(void)
 void tup_lock_exit(void)
 {
 	CLOG("lock_exit {");
-	CLOG("shared -->...");
+	CLOG("obj -->...");
 	tup_unflock(obj_lock);
 	tup_lock_close(obj_lock);
+
+	CLOG("touching obj_close");
+	touch(obj_lock_close);
+	tup_lock_close(obj_lock_close);
 
 	CLOG("<-- tri...");
 	/* Wait for the monitor to pick up the object lock */

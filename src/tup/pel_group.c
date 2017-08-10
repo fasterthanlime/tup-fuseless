@@ -29,13 +29,19 @@
 
 int pel_ignored(const char *path, int len)
 {
-	if(len < 0)
-		len = strlen(path);
+	// fork note: we get weird stuff if we don't do that,
+	// like:
+	// > not ignoring '.tup' (len 16), full: '.tup\0\0\0\0\0\0\0\0\0\0\0\0'
+	len = strlen(path);
 	if(len == 1 && strncmp(path, ".", 1) == 0)
+		return 1;
+	if(len == 1 && strncmp(path, "\4", 1) == 0) // WSL inotify sends this sometimes?!
 		return 1;
 	if(len == 2 && strncmp(path, "..", 2) == 0)
 		return 1;
 	if(len == 4 && strncmp(path, ".tup", 4) == 0)
+		return 1;
+	if(len == 8 && strncmp(path, ".tupstrm", 8) == 0)
 		return 1;
 	if(len == 4 && strncmp(path, ".git", 4) == 0)
 		return 1;
@@ -45,6 +51,17 @@ int pel_ignored(const char *path, int len)
 		return 1;
 	if(len == 4 && strncmp(path, ".svn", 4) == 0)
 		return 1;
+
+	fprintf(stderr, "not ignoring '%s' (len %d, first '%x'), full: '", path, len, path[0]);
+	for (int i = 0; i < len; i++) {
+		if (path[i] == '\0') {
+			fprintf(stderr, "\\0");
+		} else {
+			fprintf(stderr, "%c", path[i]);
+		}
+	}
+	fprintf(stderr, "'\n");
+
 	/* See also fuse_fs.c:is_hidden() */
 	return 0;
 }

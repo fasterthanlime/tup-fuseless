@@ -26,6 +26,7 @@
 /** Tri-lock */
 #define TUP_SHARED_LOCK ".tup/shared"
 #define TUP_OBJECT_LOCK ".tup/object"
+#define TUP_OBJECT_LOCK_CLOSE ".tup/object_close"
 #define TUP_TRI_LOCK ".tup/tri"
 
 /** Initializes the shared tup object lock. This allows multiple readers to

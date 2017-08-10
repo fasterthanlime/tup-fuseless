@@ -108,6 +108,7 @@ static void sighandler(int sig);
 static int inot_fd;
 static int tup_wd;
 static int obj_wd;
+static int obj_close_wd;
 static struct dircache_root droot;
 static struct sigaction sigact = {
 	.sa_handler = sighandler,
@@ -228,9 +229,17 @@ int monitor(int argc, char **argv)
 	 * lock). The only way we know to release the lock is if some other
 	 * process opens the object lock.
 	 */
-	obj_wd = inotify_add_watch(inot_fd, TUP_OBJECT_LOCK, IN_OPEN|IN_CLOSE);
+	obj_wd = inotify_add_watch(inot_fd, TUP_OBJECT_LOCK, IN_ATTRIB);
 	CLOG("added watch on %s", TUP_OBJECT_LOCK);
 	if(obj_wd < 0) {
+		pinotify();
+		rc = -1;
+		goto close_inot;
+	}
+
+	obj_close_wd = inotify_add_watch(inot_fd, TUP_OBJECT_LOCK_CLOSE, IN_ATTRIB);
+	CLOG("added watch on %s", TUP_OBJECT_LOCK_CLOSE);
+	if(obj_close_wd < 0) {
 		pinotify();
 		rc = -1;
 		goto close_inot;
@@ -616,10 +625,8 @@ static int monitor_loop(void)
 					return 0;
 				}
 			} else if(e->wd == obj_wd) {
-				CLOG("obj lock watch triggered!");
-
-				if((e->mask & IN_OPEN) && locked) {
-					CLOG("obj lock opened!");
+				CLOG("obj lock opend, locked = %d", locked);
+				if(locked) {
 					int pid;
 					/* An autoupdate process will get the lock, so the
 					 * monitor will end up here. We don't want to try
@@ -651,8 +658,9 @@ static int monitor_loop(void)
 					}
 					DEBUGP("monitor off\n");
 				}
-				if((e->mask & IN_CLOSE) && !locked) {
-					CLOG("obj lock closed!");
+			} else if(e->wd == obj_close_wd) {
+				CLOG("obj lock closed, locked = %d", locked);
+				if(!locked) {
 					CLOG("<-- obj...")
 					if(tup_flock(tup_obj_lock()) < 0) {
 						return -1;

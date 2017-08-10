@@ -33,13 +33,7 @@
 #define ANSI_COLOR_BLUE    "\x1b[34m"
 #define ANSI_COLOR_MAGENTA "\x1b[35m"
 #define ANSI_COLOR_CYAN    "\x1b[36m"
-#define ANSI_BG_RED        "\x1b[41m"
-#define ANSI_BG_GREEN      "\x1b[42m"
-#define ANSI_BG_YELLOW     "\x1b[43m"
-#define ANSI_BG_BLUE       "\x1b[44m"
-#define ANSI_BG_MAGENTA    "\x1b[45m"
-#define ANSI_BG_CYAN       "\x1b[46m"
-#define NUM_COLORS 12
+#define NUM_COLORS 6
 
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
@@ -52,12 +46,6 @@ const char *escape_start() {
 		case 3:  return ANSI_COLOR_BLUE;
 		case 4:  return ANSI_COLOR_MAGENTA;
 		case 5:  return ANSI_COLOR_CYAN;
-		case 6:  return ANSI_BG_RED;
-		case 7:  return ANSI_BG_GREEN;
-		case 8:  return ANSI_BG_YELLOW;
-		case 9:  return ANSI_BG_BLUE;
-		case 10: return ANSI_BG_MAGENTA;
-		case 11: return ANSI_BG_CYAN;
 	}
 }
 
