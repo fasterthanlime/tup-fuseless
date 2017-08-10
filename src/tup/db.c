@@ -42,6 +42,7 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <libgen.h>
 #include <errno.h>
 #include <ctype.h>
 #include <sys/stat.h>
@@ -5176,7 +5177,23 @@ int tup_db_get_environ(struct tupid_entries *root,
 	te->block_size = 1;
 	te->num_entries = 0;
 
-	char *preload_value = "LD_PRELOAD=/home/amos/Dev/tups/tup-master/src/ldpreload/tup-ldpreload.so";
+	char self_path[PATH_MAX];
+	ssize_t rl_written = readlink("/proc/self/exe", self_path, PATH_MAX);
+	if (rl_written < 0) {
+		fprintf(stderr, "tup internal error: Couldn't figure out our own path");
+		return -1;
+	}
+	self_path[rl_written] = '\0';
+
+	char *self_dir = dirname(self_path);
+	if (!self_dir) {
+		fprintf(stderr, "tup internal error: Couldn't figure out our directory");
+		return -1;
+	}
+
+	char preload_value[PATH_MAX + 128];
+	snprintf(preload_value, sizeof(preload_value), "LD_PRELOAD=%s/src/ldpreload/tup-ldpreload.so", self_dir);
+
 	int preload_value_len = strlen(preload_value);
 	te->block_size += preload_value_len + 1;
 	te->num_entries++;
