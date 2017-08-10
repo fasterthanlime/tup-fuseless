@@ -1,4 +1,4 @@
-# Fuseless tup
+# tup, without FUSE, working around partial locks & inotify
 
 [![Maintainer status](https://img.shields.io/badge/maintained%3F-no!-red.svg?style=flat)](https://twitter.com/nilium/status/894671737266163712)
 
