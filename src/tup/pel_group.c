@@ -52,6 +52,7 @@ int pel_ignored(const char *path, int len)
 	if(len == 4 && strncmp(path, ".svn", 4) == 0)
 		return 1;
 
+#if 0
 	fprintf(stderr, "not ignoring '%s' (len %d, first '%x'), full: '", path, len, path[0]);
 	for (int i = 0; i < len; i++) {
 		if (path[i] == '\0') {
@@ -61,6 +62,7 @@ int pel_ignored(const char *path, int len)
 		}
 	}
 	fprintf(stderr, "'\n");
+#endif
 
 	/* See also fuse_fs.c:is_hidden() */
 	return 0;

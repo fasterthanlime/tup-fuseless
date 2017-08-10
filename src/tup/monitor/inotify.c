@@ -259,7 +259,6 @@ int monitor(int argc, char **argv)
 			tup_unflock(tup_obj_lock());
 
 			CLOG("wait <-- object");
-			fprintf(stderr, "[%d][inotify] wait_flock object lock\n", getpid());
 			if(tup_wait_flock(tup_obj_lock()) < 0)
 				exit(1);
 

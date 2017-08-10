@@ -26,7 +26,13 @@
 const char *escape_start();
 const char *escape_end();
 
+// #define ENABLE_CLOG
+
+#if defined(ENABLE_CLOG)
 #define CLOG(...) { fprintf(stderr, "%s%d: ", escape_start(), getpid()); fprintf(stderr, __VA_ARGS__); fprintf(stderr, " @ %s:%d%s\n", __FILE__, __LINE__, escape_end()); }
+#else
+#define CLOG(...)
+#endif
 
 /* Wrappers for fcntl */
 int tup_lock_open(const char *lockname, tup_lock_t *lock);

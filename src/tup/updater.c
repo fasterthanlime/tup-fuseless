@@ -1631,7 +1631,6 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 		workers[x].g = g;
 		snprintf(lockname+8, 5, "%04x", x);
 		lockname[12] = 0;
-		fprintf(stderr, "about to create %s...\n", lockname);
 		if(mkdirat(tup_top_fd(), lockname, 0777) < 0) {
 			if(errno != EEXIST) {
 				perror("mkdirat(jobXXXX)");
@@ -1643,7 +1642,6 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 		workers[x].lockname = strdup(lockname);
 
 		memcpy(lockname+17, "strm", 4);
-		fprintf(stderr, "lockname is now %s...\n", lockname);
 		workers[x].streamname = strdup(lockname);
 
 		if(pthread_mutex_init(&workers[x].lock, NULL) != 0) {
