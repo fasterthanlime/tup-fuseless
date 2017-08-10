@@ -1625,21 +1625,25 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 		perror("malloc");
 		return -2;
 	}
+
 	for(x=0; x<jobs; x++) {
-		char lockname[] = "jobXXXX/.tuplock";
+		char lockname[] = ".tup/jobXXXX/.tuplock";
 		workers[x].g = g;
-		snprintf(lockname+3, 5, "%04x", x);
-		lockname[7] = 0;
+		snprintf(lockname+8, 5, "%04x", x);
+		lockname[12] = 0;
+		fprintf(stderr, "about to create %s...\n", lockname);
 		if(mkdirat(tup_top_fd(), lockname, 0777) < 0) {
 			if(errno != EEXIST) {
-				perror("mkdirat");
+				perror("mkdirat(jobXXXX)");
 				return -2;
 			}
 		}
-		lockname[7] = '/';
+
+		lockname[12] = '/';
 		workers[x].lockname = strdup(lockname);
 
-		memcpy(lockname+12, "strm", 4);
+		memcpy(lockname+17, "strm", 4);
+		fprintf(stderr, "lockname is now %s...\n", lockname);
 		workers[x].streamname = strdup(lockname);
 
 		if(pthread_mutex_init(&workers[x].lock, NULL) != 0) {
