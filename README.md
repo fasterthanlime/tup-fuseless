@@ -10,7 +10,7 @@ In particular:
     * Instead of using unix sockets, it uses temporary files
       (this is because of the master_fork architcture in recent tups)
     * Only 64-bit is supported (the lib isn't dual-built), but more could be
-  * It uses flock() of fcntl() to lock files, since the former isn't supported on WSL
+  * It uses `flock` instead of `fcntl` to lock files, since the latter has incorrect behavior on WSL
     * See <https://github.com/fasterthanlime/locktest> for details
   * It works around partial inotify support on WSL:
     * Instead of reacting to OPEN and CLOSE events on `.tup/object`, it
