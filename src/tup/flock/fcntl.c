@@ -27,6 +27,44 @@
 #include <unistd.h>
 #include <errno.h>
 
+#define ANSI_COLOR_RED     "\x1b[31m"
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_YELLOW  "\x1b[33m"
+#define ANSI_COLOR_BLUE    "\x1b[34m"
+#define ANSI_COLOR_MAGENTA "\x1b[35m"
+#define ANSI_COLOR_CYAN    "\x1b[36m"
+#define ANSI_BG_RED        "\x1b[41m"
+#define ANSI_BG_GREEN      "\x1b[42m"
+#define ANSI_BG_YELLOW     "\x1b[43m"
+#define ANSI_BG_BLUE       "\x1b[44m"
+#define ANSI_BG_MAGENTA    "\x1b[45m"
+#define ANSI_BG_CYAN       "\x1b[46m"
+#define NUM_COLORS 12
+
+#define ANSI_COLOR_RESET   "\x1b[0m"
+
+const char *escape_start() {
+	int colornum = getpid() % 6;
+	switch (colornum) {
+		case 0:  return ANSI_COLOR_RED;
+		case 1:  return ANSI_COLOR_GREEN;
+		case 2:  return ANSI_COLOR_YELLOW;
+		case 3:  return ANSI_COLOR_BLUE;
+		case 4:  return ANSI_COLOR_MAGENTA;
+		case 5:  return ANSI_COLOR_CYAN;
+		case 6:  return ANSI_BG_RED;
+		case 7:  return ANSI_BG_GREEN;
+		case 8:  return ANSI_BG_YELLOW;
+		case 9:  return ANSI_BG_BLUE;
+		case 10: return ANSI_BG_MAGENTA;
+		case 11: return ANSI_BG_CYAN;
+	}
+}
+
+const char *escape_end() {
+	return ANSI_COLOR_RESET;
+}
+
 int tup_lock_open(const char *lockname, tup_lock_t *lock)
 {
 	int fd;
@@ -50,15 +88,7 @@ void tup_lock_close(tup_lock_t lock)
 
 int tup_flock(tup_lock_t fd)
 {
-	struct flock fl = {
-		.l_type = F_WRLCK,
-		.l_whence = SEEK_SET,
-		.l_start = 0,
-		.l_len = 0,
-	};
-
-	if(fcntl(fd, F_SETLKW, &fl) < 0) {
-		perror("fcntl F_WRLCK");
+	if(flock(fd, LOCK_EX) < 0) {
 		return -1;
 	}
 	return 0;
@@ -67,33 +97,17 @@ int tup_flock(tup_lock_t fd)
 /* Returns: -1 error, 0 got lock, 1 would block */
 int tup_try_flock(tup_lock_t fd)
 {
-	struct flock fl = {
-		.l_type = F_WRLCK,
-		.l_whence = SEEK_SET,
-		.l_start = 0,
-		.l_len = 0,
-	};
-
-	if(fcntl(fd, F_SETLK, &fl) < 0) {
-		if (errno == EAGAIN)
+	if(flock(fd, LOCK_EX|LOCK_NB) < 0) {
+		if (errno == EWOULDBLOCK)
 			return 1;
-		perror("fcntl F_WRLCK");
+		perror("tup_try_flock");
 		return -1;
 	}
-	return 0;
 }
 
 int tup_unflock(tup_lock_t fd)
 {
-	struct flock fl = {
-		.l_type = F_UNLCK,
-		.l_whence = SEEK_SET,
-		.l_start = 0,
-		.l_len = 0,
-	};
-
-	if(fcntl(fd, F_SETLKW, &fl) < 0) {
-		perror("fcntl F_UNLCK");
+	if(flock(fd, LOCK_UN) < 0) {
 		return -1;
 	}
 	return 0;
@@ -101,22 +115,17 @@ int tup_unflock(tup_lock_t fd)
 
 int tup_wait_flock(tup_lock_t fd)
 {
-	struct flock fl;
-
 	while(1) {
-		fl.l_type = F_WRLCK;
-		fl.l_whence = SEEK_SET;
-		fl.l_start = 0;
-		fl.l_len = 0;
-
-		if(fcntl(fd, F_GETLK, &fl) < 0) {
-			perror("fcntl F_GETLK");
+		if(flock(fd, LOCK_EX|LOCK_NB) < 0) {
+			if (errno == EWOULDBLOCK) {
+				usleep(10000);
+				continue;
+			}
+			perror("tup_wait_flock");
 			return -1;
 		}
 
-		if(fl.l_type == F_WRLCK)
-			break;
-		usleep(10000);
+		break;
 	}
 	return 0;
 }

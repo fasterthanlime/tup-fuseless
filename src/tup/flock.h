@@ -23,6 +23,11 @@
 
 #include "tup_lock_t.h"
 
+const char *escape_start();
+const char *escape_end();
+
+#define CLOG(...) { fprintf(stderr, "%s%d: ", escape_start(), getpid()); fprintf(stderr, __VA_ARGS__); fprintf(stderr, " @ %s:%d%s\n", __FILE__, __LINE__, escape_end()); }
+
 /* Wrappers for fcntl */
 int tup_lock_open(const char *lockname, tup_lock_t *lock);
 void tup_lock_close(tup_lock_t lock);

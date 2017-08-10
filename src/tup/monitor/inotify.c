@@ -229,6 +229,7 @@ int monitor(int argc, char **argv)
 	 * process opens the object lock.
 	 */
 	obj_wd = inotify_add_watch(inot_fd, TUP_OBJECT_LOCK, IN_OPEN|IN_CLOSE);
+	CLOG("added watch on %s", TUP_OBJECT_LOCK);
 	if(obj_wd < 0) {
 		pinotify();
 		rc = -1;
@@ -236,7 +237,7 @@ int monitor(int argc, char **argv)
 	}
 
 	if(foreground) {
-		fprintf(stderr, "[%d][inotify] unflocking shared lock\n", getpid());
+		CLOG("shared -->");
 		if(tup_unflock(tup_sh_lock()) < 0) {
 			return -1;
 		}
@@ -245,14 +246,18 @@ int monitor(int argc, char **argv)
 			/* Remove our object lock, then wait for the child
 			 * process to get it.
 			 */
-			fprintf(stderr, "[%d][inotify] unflocking object lock\n", getpid());
+			CLOG("object -->");
 			tup_unflock(tup_obj_lock());
+
+			CLOG("wait <-- object");
 			fprintf(stderr, "[%d][inotify] wait_flock object lock\n", getpid());
 			if(tup_wait_flock(tup_obj_lock()) < 0)
 				exit(1);
-			fprintf(stderr, "[%d][inotify] cleanup\n", getpid());
+
+			CLOG("cleanup");
 			if(tup_cleanup() < 0)
 				exit(1);
+
 			tup_valgrind_cleanup();
 			exit(0);
 		}
@@ -260,11 +265,12 @@ int monitor(int argc, char **argv)
 		/* Child must re-acquire the object lock, since we lost it at
 		 * the fork
 		 */
-		fprintf(stderr, "[%d][inotify-monitor] flocking object lock\n", getpid());
+		CLOG("<-- object...")
 		if(tup_flock(tup_obj_lock()) < 0) {
 			rc = -1;
 			goto close_inot;
 		}
+		CLOG("<-- object!");
 	}
 
 	if(monitor_set_pid(getpid()) < 0) {
@@ -333,7 +339,7 @@ int monitor(int argc, char **argv)
 				}
 			}
 
-			fprintf(stderr, "[%d][inotify-monitor] unflocking shared lock\n", getpid());
+			CLOG("shared -->")
 			if(tup_unflock(tup_sh_lock()) < 0) {
 				return -1;
 			}
@@ -368,7 +374,6 @@ static int monitor_set_pid(int pid)
 		perror(MONITOR_PID_FILE);
 		return -1;
 	}
-	fprintf(stderr, "[%d][inotify-monitor] flocking monitor pid file\n", getpid());
 	if(tup_flock(fd) < 0) {
 		return -1;
 	}
@@ -385,7 +390,6 @@ static int monitor_set_pid(int pid)
 		perror("ftruncate");
 		return -1;
 	}
-	fprintf(stderr, "[%d][inotify-monitor] unflocking monitor pid file\n", getpid());
 	if(tup_unflock(fd) < 0) {
 		return -1;
 	}
@@ -602,8 +606,6 @@ static int monitor_loop(void)
 			 * again.
 			 */
 			if(e->wd == tup_wd) {
-				fprintf(stderr, "[%d][inotify-monitor] tup_wd opened (%s)\n", getpid(), TUP_DIR);
-
 				/* If we 'rm -rf' a project with the monitor
 				 * running, we will know when the db file is
 				 * removed and can automatically quit the
@@ -614,9 +616,10 @@ static int monitor_loop(void)
 					return 0;
 				}
 			} else if(e->wd == obj_wd) {
-				fprintf(stderr, "[%d][inotify-monitor] obj_wd opened (%s)\n", getpid(), TUP_OBJECT_LOCK);
+				CLOG("obj lock watch triggered!");
 
 				if((e->mask & IN_OPEN) && locked) {
+					CLOG("obj lock opened!");
 					int pid;
 					/* An autoupdate process will get the lock, so the
 					 * monitor will end up here. We don't want to try
@@ -629,29 +632,34 @@ static int monitor_loop(void)
 						return -1;
 					if(tup_db_config_get_int(AUTOUPDATE_PID, -1, &pid) < 0)
 						return -1;
-					fprintf(stderr, "[%d][inotify-monitor] autoupdate pid from config: %d\n", getpid(), pid);
+					CLOG("config_get(AUTOUPDATE_PID) = %d", pid);
 					if(tup_db_commit() < 0)
 						return -1;
 					rc = flush_queue(pid == -1);
 					if(rc < 0)
 						return rc;
 					locked = 0;
-					fprintf(stderr, "[%d][inotify-monitor] flocking tri lock\n", getpid());
+					CLOG("tri <--...")
 					if(tup_flock(tup_tri_lock()) < 0) {
 						return -1;
 					}
-					fprintf(stderr, "[%d][inotify-monitor] unflocking obj lock\n", getpid());
+					CLOG("tri <--...!")
+
+					CLOG("--> obj")
 					if(tup_unflock(tup_obj_lock()) < 0) {
 						return -1;
 					}
 					DEBUGP("monitor off\n");
 				}
 				if((e->mask & IN_CLOSE) && !locked) {
-					fprintf(stderr, "[%d][inotify-monitor] flocking obj lock\n", getpid());
+					CLOG("obj lock closed!");
+					CLOG("<-- obj...")
 					if(tup_flock(tup_obj_lock()) < 0) {
 						return -1;
 					}
-					fprintf(stderr, "[%d][inotify-monitor] unflocking tri lock\n", getpid());
+					CLOG("<-- obj!");
+
+					CLOG("tri -->");
 					if(tup_unflock(tup_tri_lock()) < 0) {
 						return -1;
 					}
@@ -683,7 +691,7 @@ static int monitor_loop(void)
 					DEBUGP("monitor ON\n");
 				}
 			} else {
-				fprintf(stderr, "[%d][inotify-monitor] something else opened, queuing event\n", getpid());
+				CLOG("inotify event on %s", e->name);
 				rc = queue_event(e);
 				if(rc < 0)
 					return rc;
@@ -813,7 +821,7 @@ static int queue_event(struct inotify_event *e)
 
 static int flush_queue(int do_autoupdate)
 {
-	fprintf(stderr, "[%d][inotify-monitor] flushing queue (autoupdate=%d)\n", getpid(), do_autoupdate);
+	CLOG("flushing queue (autoupdate=%d)", do_autoupdate);
 
 	static int events_handled = 0;
 	struct monitor_event *m;
@@ -877,7 +885,7 @@ static int flush_queue(int do_autoupdate)
 
 static int autoupdate(const char *cmd)
 {
-	fprintf(stderr, "[%d][inotify-monitor] running %s\n", getpid(), cmd);
+	CLOG("autoupdate(%s)", cmd);
 
 	/* This runs in a separate process (as opposed to just calling
 	 * updater() directly) so it can properly get the lock from us (the

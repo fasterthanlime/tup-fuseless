@@ -425,7 +425,7 @@ static void handle_file(const char *file, const char *file2, int at)
 		}
 	}
 
-	tup_send_event(canon_file, canon_len, canon_file2, canon_len2, at, ourpid);
+	tup_send_event(canon_file, canon_len, canon_file2, canon_len2, at);
 }
 
 int normalize_path(const char *src, char *res)

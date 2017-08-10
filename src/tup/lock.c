@@ -82,45 +82,57 @@ static tup_lock_t tri_lock;
 int tup_lock_init(void)
 {
 	int ret;
+	CLOG("lock_init {");
 
-	fprintf(stderr, "[%d][init] flocking shared lock %s\n", getpid(), TUP_SHARED_LOCK);
+	CLOG("open shared");
 	if(tup_lock_open(TUP_SHARED_LOCK, &sh_lock) < 0)
 		return -1;
+	CLOG("try <-- shared");
 	ret = tup_try_flock(sh_lock);
 	if(ret > 0) {
 		printf("Waiting for another tup process (or an autoupdate) to finish...\n");
+		CLOG("<-- shared...");
 		ret = tup_flock(sh_lock);
 	}
 	if(ret < 0) {
 		return -1;
 	}
+	CLOG("<-- shared!");
 
-	fprintf(stderr, "[%d][init] flocking object lock %s\n", getpid(), TUP_OBJECT_LOCK);
+	CLOG("open object");
 	if(tup_lock_open(TUP_OBJECT_LOCK, &obj_lock) < 0)
 		return -1;
+	CLOG("<-- object...");
 	if(tup_flock(obj_lock) < 0)
 		return -1;
+	CLOG("<-- object!");
 
-	fprintf(stderr, "[%d][init] opening tri lock %s\n", getpid(), TUP_TRI_LOCK);
+	CLOG("open tri");
 	if(tup_lock_open(TUP_TRI_LOCK, &tri_lock) < 0)
 		return -1;
+
+	CLOG("} // lock_init");
 	return 0;
 }
 
 void tup_lock_exit(void)
 {
-	fprintf(stderr, "[%d][exit] unflocking shared lock\n", getpid());
+	CLOG("lock_exit {");
+	CLOG("shared -->...");
 	tup_unflock(obj_lock);
 	tup_lock_close(obj_lock);
-	fprintf(stderr, "[%d][exit] flocking tri lock\n", getpid());
+
+	CLOG("<-- tri...");
 	/* Wait for the monitor to pick up the object lock */
 	tup_flock(tri_lock);
-	fprintf(stderr, "[%d][exit] unflocking tri lock\n", getpid());
+	CLOG("<-- tri!");
 	tup_unflock(tri_lock);
+	CLOG("tri -->");
 	tup_lock_close(tri_lock);
-	fprintf(stderr, "[%d][exit] unflocking shared lock\n", getpid());
+	CLOG("shared -->");
 	tup_unflock(sh_lock);
 	tup_lock_close(sh_lock);
+	CLOG("} // lock_exit");
 }
 
 void tup_lock_closeall(void)

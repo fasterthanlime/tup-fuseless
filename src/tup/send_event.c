@@ -28,11 +28,11 @@
 #include <sys/socket.h>
 #include <dlfcn.h>
 
-static int write_all(int sd, const void *buf, size_t len, int pid);
+static int write_all(int sd, const void *buf, size_t len);
 
 #define MAX_MESSAGE_SIZE PIPE_BUF
 
-void tup_send_event(const char *file, int len, const char *file2, int len2, int at, int pid)
+void tup_send_event(const char *file, int len, const char *file2, int len2, int at)
 {
 	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 	static int tupsd;
@@ -111,7 +111,7 @@ void tup_send_event(const char *file, int len, const char *file2, int len2, int 
 			exit(1);
 		}
 
-		if(write_all(tupsd, buf, buflen, pid) < 0) {
+		if(write_all(tupsd, buf, buflen) < 0) {
 			perror("write_all(buf)");
 			exit(1);
 		}
@@ -128,7 +128,7 @@ void tup_send_event(const char *file, int len, const char *file2, int len2, int 
 	}
 }
 
-static int write_all(int sd, const void *buf, size_t len, int pid)
+static int write_all(int sd, const void *buf, size_t len)
 {
 	size_t sent = 0;
 	const char *cur = buf;
